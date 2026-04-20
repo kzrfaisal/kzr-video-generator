@@ -1,0 +1,139 @@
+You are writing a short YouTube debate script.
+
+TOPIC: {topic}
+
+VIDEO LENGTH TARGET: about 2-4 minutes.
+
+FORMAT RULES:
+
+Host introduces the debate first
+
+Host should moderate and orchestrate the discussion
+
+Speaker A gives opening argument
+
+Speaker B gives opening argument
+
+Host transitions to rebuttals
+
+Speaker A rebuttal
+
+Speaker B rebuttal
+
+Host transitions to closing statements
+
+Speaker A closing statement
+
+Speaker B closing statement
+
+Host ends with a short summary and audience question
+
+DIALOGUE RULES:
+
+Natural spoken language
+
+Each line must contain 1-2 sentences maximum
+
+Lines should be short enough to fit a subtitle card (max two subtitle lines)
+
+Break longer thoughts across multiple lines
+
+Each speaker should develop their argument step-by-step across multiple lines
+
+Avoid generic debate phrases like "In short", "Imagine a world", or "Thanks!"
+
+Avoid overly polished or promotional language
+
+Host should react naturally (appreciate points, guide debate)
+
+STYLE REQUIREMENTS:
+
+Arguments should progress logically across lines, not repeat or summarize.
+
+Each line should feel like a natural continuation of the previous line.
+
+Avoid motivational or inspirational phrasing.
+
+The debate should feel calm, thoughtful, and realistic, like a moderated discussion.
+
+Host transitions should sound conversational (for example:
+"Those are strong points."
+"Now let's hear the other side."
+"Interesting argument."
+"Before we wrap up…")
+
+NO narration text.
+NO stage directions.
+ONLY dialogue lines.
+
+STRUCTURE:
+
+HOST:
+Intro and topic introduction (4-6 lines)
+Introduce both sides
+Invite Speaker A to begin
+
+A:
+Opening argument (8-12 lines)
+
+HOST:
+React briefly and invite Speaker B
+
+B:
+Opening argument (8-12 lines)
+
+HOST:
+Transition to rebuttals
+
+A:
+Rebuttal (6-10 lines)
+
+HOST:
+Invite response
+
+B:
+Rebuttal (6-10 lines)
+
+HOST:
+Transition to closing statements
+
+A:
+Closing statement (3-5 lines)
+
+HOST:
+Invite Speaker B closing
+
+B:
+Closing statement (3-5 lines)
+
+HOST:
+Final summary and audience question (4-6 lines)
+
+TONE:
+Realistic debate, thoughtful but conversational.
+
+OUTPUT FORMAT STRICTLY:
+
+HOST|...
+
+A|...
+
+B|...
+
+OUTPUT FORMAT EXAMPLE:"
+HOST|Welcome to today's debate on a pressing topic: AI replacing teachers.  
+HOST|We're exploring whether artificial intelligence can effectively take over the role of educators.  
+
+A|Thank you! AI can personalize learning experiences.  
+A|It adapts to each student's needs, addressing their strengths and weaknesses.  
+A|This tailored approach can lead to better learning outcomes.  
+
+HOST|Interesting points, Speaker A. Now let’s hear from Speaker B.
+"
+
+
+Each line must begin with the speaker label exactly like above.
+
+Do NOT add explanations.
+Do NOT add extra formatting.
+Do NOT add timestamps.

@@ -1,0 +1,21 @@
+{
+  "name": "kzr-video-generator",
+  "version": "1.0.0",
+  "description": "Debate video generator",
+  "main": "main.ts",
+  "scripts": {
+    "start": "tsx main.ts",
+    "script": "tsx src/generateScript.ts",
+    "audio": "tsx src/generateAudio.ts",
+    "video": "tsx src/makeVideo.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "openai": "^4.97.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
