@@ -2,9 +2,9 @@ import { run as generateAudio } from './generateAudio';
 import { run as createVideoSegments } from './createVideoSegments';
 import { run as buildVideo } from './buildVideo';
 
-export function run(debateName: string): void {
+export async function run(debateName: string): Promise<void> {
   console.log(`Generating audio for ${debateName}...`);
-  generateAudio(debateName);
+  await generateAudio(debateName);
 
   console.log(`Generating segment videos for ${debateName}...`);
   createVideoSegments(debateName);
@@ -21,10 +21,5 @@ if (require.main === module) {
     console.error('Usage: tsx src/makeVideo.ts <debate_name>');
     process.exit(1);
   }
-  try {
-    run(debateName);
-  } catch (err: any) {
-    console.error(err.message);
-    process.exit(1);
-  }
+  run(debateName).catch(err => { console.error(err.message); process.exit(1); });
 }

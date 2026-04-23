@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { ensureDir, escapeDrawtext, wrapText, parseDebateFile } from './utils';
+import { ensureDir, wrapText, parseDebateFile } from './utils';
 
 const IMAGE_MAP: Record<string, string> = {
   HOST: 'assets/images/image_H.png',
@@ -9,16 +9,21 @@ const IMAGE_MAP: Record<string, string> = {
   B: 'assets/images/image_B.png',
 };
 
-const FONT = 'assets/fonts/Nunito-Regular.ttf';
+const FONT = path.resolve('assets/fonts/Nunito-Regular.ttf');
 const BASE_Y = 120;
 const LINE_HEIGHT = 50;
 
 function createSegment(image: string, audio: string, text: string, outputPath: string): void {
-  const escaped = escapeDrawtext(text);
-  const wrapped = wrapText(escaped, 72);
+  const wrapped = wrapText(text, 72);
 
-  const filters = wrapped.map((line, i) =>
-    `drawtext=fontfile=${FONT}:text='${line}':fontcolor=white:fontsize=40:shadowcolor=black:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${BASE_Y + i * LINE_HEIGHT}`
+  const textFiles = wrapped.map((line, i) => {
+    const filePath = path.resolve(outputPath.replace('.mp4', `_line${i}.txt`));
+    fs.writeFileSync(filePath, line, 'utf-8');
+    return filePath;
+  });
+
+  const filters = textFiles.map((filePath, i) =>
+    `drawtext=fontfile=${FONT}:textfile=${filePath}:fontcolor=white:fontsize=40:shadowcolor=black:shadowx=2:shadowy=2:x=(w-text_w)/2:y=${BASE_Y + i * LINE_HEIGHT}`
   );
 
   const drawtext = filters.join(',');
@@ -39,6 +44,7 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
   ];
 
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });
+  textFiles.forEach((f: string) => { try { fs.unlinkSync(f); } catch {} });
   if (result.status !== 0) throw new Error(`ffmpeg failed for segment: ${outputPath}`);
 }
 
@@ -59,7 +65,7 @@ export function run(debateName: string): void {
 
   const lines = parseDebateFile(`output/debates/${debateName}.txt`);
 
-  files.forEach((file, idx) => {
+  files.forEach((file: string, idx: number) => {
     const speaker = file.split('_')[1].split('.')[0];
     const image = IMAGE_MAP[speaker] ?? IMAGE_MAP['A'];
     const audioPath = path.join(audioDir, file);

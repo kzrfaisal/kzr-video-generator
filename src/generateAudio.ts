@@ -1,28 +1,30 @@
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import OpenAI from 'openai';
 import { ensureDir, parseDebateFile } from './utils';
 
+const client = new OpenAI();
+
 const VOICE_MAP: Record<string, string> = {
-  HOST: 'Tessa',
-  A: 'Daniel',
-  B: 'Aman',
+  HOST: 'alloy',
+  A: 'echo',
+  B: 'onyx',
 };
 
-function generateTts(text: string, baseFilename: string, voice: string): void {
-  const aiffFile = baseFilename + '.aiff';
-  const mp3File = baseFilename + '.mp3';
-
-  let result = spawnSync('say', ['-v', voice, '-o', aiffFile, text], { stdio: 'inherit' });
-  if (result.status !== 0) throw new Error(`say failed for: ${baseFilename}`);
-
-  result = spawnSync('ffmpeg', ['-y', '-i', aiffFile, '-q:a', '0', mp3File], { stdio: 'inherit' });
-  if (result.status !== 0) throw new Error(`ffmpeg conversion failed for: ${aiffFile}`);
-
-  fs.unlinkSync(aiffFile);
+async function generateTts(text: string, mp3File: string, voice: string): Promise<void> {
+  const response = await client.audio.speech.create({
+    model: 'tts-1',
+    voice: voice as 'alloy' | 'echo' | 'onyx',
+    input: text,
+    response_format: 'mp3',
+    speed: 1.0,
+  });
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(mp3File, buffer);
 }
 
-export function run(debateName: string): void {
+export async function run(debateName: string): Promise<void> {
   const outputDir = `tmp/audio/${debateName}`;
 
   ensureDir('tmp');
@@ -33,11 +35,11 @@ export function run(debateName: string): void {
   let counter = 1;
 
   for (const { speaker, text } of lines) {
-    const voice = VOICE_MAP[speaker] ?? 'Tessa';
-    const baseFilename = path.join(outputDir, `${String(counter).padStart(3, '0')}_${speaker}`);
+    const voice = VOICE_MAP[speaker] ?? 'alloy';
+    const mp3File = path.join(outputDir, `${String(counter).padStart(3, '0')}_${speaker}.mp3`);
 
-    console.log(`Generating: ${baseFilename} using ${voice}`);
-    generateTts(text, baseFilename, voice);
+    console.log(`Generating: ${mp3File} using ${voice}`);
+    await generateTts(text, mp3File, voice);
     counter++;
   }
 
@@ -50,10 +52,5 @@ if (require.main === module) {
     console.error('Usage: tsx src/generateAudio.ts <debate_name>');
     process.exit(1);
   }
-  try {
-    run(debateName);
-  } catch (err: any) {
-    console.error(err.message);
-    process.exit(1);
-  }
+  run(debateName).catch(err => { console.error(err.message); process.exit(1); });
 }

@@ -39,7 +39,7 @@ export function wrapText(text: string, width = 72): string[] {
 export function escapeDrawtext(text: string): string {
   return text
     .replace(/\\/g, '\\\\')
-    .replace(/'/g, "'\\''")
+    .replace(/'/g, "\\'")
     .replace(/:/g, '\\:')
     .replace(/%/g, '\\%')
     .replace(/\[/g, '\\[')
@@ -50,7 +50,7 @@ export function escapeDrawtext(text: string): string {
 // Validates every non-empty line matches SPEAKER|text format.
 export function parseDebateFile(filePath: string): DebateLine[] {
   const raw = fs.readFileSync(filePath, 'utf-8');
-  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const lines = raw.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
   const result: DebateLine[] = [];
 
   for (const line of lines) {

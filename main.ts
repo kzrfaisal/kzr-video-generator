@@ -38,7 +38,7 @@ async function main(): Promise<void> {
 
   await waitForEnter(`\nReview the script before continuing:\noutput/debates/${debateName}.txt\n\nPress ENTER when ready to generate video...`);
 
-  makeVideo(debateName);
+  await makeVideo(debateName);
 }
 
 main().catch(err => { console.error(err.message); process.exit(1); });
