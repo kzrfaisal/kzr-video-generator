@@ -7,7 +7,9 @@
     "start": "tsx main.ts",
     "script": "tsx src/generateScript.ts",
     "audio": "tsx src/generateAudio.ts",
-    "video": "tsx src/makeVideo.ts"
+    "video": "tsx src/makeVideo.ts",
+    "transitions": "tsx src/createTransitions.ts",
+    "transition-audio": "tsx src/addTransitionAudio.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
