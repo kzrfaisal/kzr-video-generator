@@ -83,6 +83,7 @@ tsx src/addTransitionAudio.ts transition_H_to_A
 ## Output
 
 - Scripts: `output/debates/debateN.txt`
+- Audio: `output/audios/debateN/`
 - Final videos: `output/videos/debateN_TIMESTAMP.mp4`
 - Temp files (auto-deleted): `tmp/`
 

@@ -27,10 +27,10 @@ async function generateTts(text: string, mp3File: string, voice: string): Promis
 }
 
 export async function run(debateName: string): Promise<{ characters: number; audioCost: number }> {
-  const outputDir = `tmp/audio/${debateName}`;
+  const outputDir = `output/audios/${debateName}`;
 
-  ensureDir('tmp');
-  ensureDir('tmp/audio');
+  ensureDir('output');
+  ensureDir('output/audios');
   ensureDir(outputDir);
 
   const lines = parseDebateFile(`output/debates/${debateName}.txt`);
