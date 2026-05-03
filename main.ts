@@ -2,26 +2,12 @@ import 'dotenv/config';
 import fs from 'fs';
 import readline from 'readline';
 import { run as generateScript } from './src/generateScript';
+import { run as generateAudio } from './src/generateAudio';
 import { run as makeVideo } from './src/makeVideo';
 
 function waitForEnter(message: string): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => rl.question(message, () => { rl.close(); resolve(); }));
-}
-
-function getLatestDebateName(): string {
-  const files = fs.readdirSync('output/debates')
-    .filter(f => f.startsWith('debate') && f.endsWith('.txt'));
-
-  if (files.length === 0) throw new Error('No debate files found in output/debates/');
-
-  files.sort((a, b) => {
-    const numA = parseInt(a.replace('debate', '').replace('.txt', ''), 10);
-    const numB = parseInt(b.replace('debate', '').replace('.txt', ''), 10);
-    return numA - numB;
-  });
-
-  return files[files.length - 1].replace('.txt', '');
 }
 
 async function main(): Promise<void> {
@@ -31,14 +17,41 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await generateScript(topic);
+  const { debateName, promptTokens, completionTokens, scriptCost } = await generateScript(topic);
 
-  const debateName = getLatestDebateName();
   console.log(`\nUsing script: ${debateName}.txt`);
-
   await waitForEnter(`\nReview the script before continuing:\noutput/debates/${debateName}.txt\n\nPress ENTER when ready to generate video...`);
 
-  await makeVideo(debateName);
+  const { characters, audioCost } = await generateAudio(debateName);
+  makeVideo(debateName);
+
+  const total = scriptCost + audioCost;
+
+  console.log(`
+╔══════════════════════════════════════╗
+║            Cost Summary              ║
+╠══════════════════════════════════════╣
+║ Script  (gpt-4o-mini)                ║
+║   Input tokens:  ${String(promptTokens).padEnd(18)}║
+║   Output tokens: ${String(completionTokens).padEnd(18)}║
+║   Cost: $${scriptCost.toFixed(6).padEnd(27)}║
+╠══════════════════════════════════════╣
+║ Audio   (tts-1)                      ║
+║   Characters:    ${String(characters).padEnd(18)}║
+║   Cost: $${audioCost.toFixed(6).padEnd(27)}║
+╠══════════════════════════════════════╣
+║ Total:  $${total.toFixed(6).padEnd(27)}║
+╚══════════════════════════════════════╝`);
+
+  const logEntry = {
+    date: new Date().toISOString(),
+    debateName,
+    topic,
+    script: { promptTokens, completionTokens, cost: scriptCost },
+    audio: { characters, cost: audioCost },
+    totalCost: total,
+  };
+  fs.appendFileSync('output/cost_log.jsonl', JSON.stringify(logEntry) + '\n', 'utf-8');
 }
 
 main().catch(err => { console.error(err.message); process.exit(1); });
