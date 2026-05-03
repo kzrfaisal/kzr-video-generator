@@ -46,6 +46,8 @@ Avoid overly polished or promotional language
 
 Host should react naturally (appreciate points, guide debate)
 
+Host must address the speakers by their names Zach (Speaker A) and David (Speaker B), never as "Speaker A" or "Speaker B".
+
 STYLE REQUIREMENTS:
 
 Arguments should progress logically across lines, not repeat or summarize.

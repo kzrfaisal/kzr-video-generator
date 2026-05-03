@@ -42,7 +42,7 @@ const STYLES: Record<string, SubtitleStyle> = {
   },
   // White text with strong shadow — cinematic/podcast look
   'glow': {
-    fontsize: 42, fontcolor: 'white',
+    fontsize: 40, fontcolor: 'white',
     shadowcolor: 'black@0.9', shadowx: 4, shadowy: 4,
     position: 'top', margin: 120,
   },
@@ -61,7 +61,7 @@ const STYLES: Record<string, SubtitleStyle> = {
 };
 
 // ← Change this to switch subtitle style
-const SUBTITLE_STYLE = 'card';
+const SUBTITLE_STYLE = 'top-classic';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ const IMAGE_MAP: Record<string, string> = {
   B: 'assets/images/image_B.png',
 };
 
-const FONT = path.resolve('assets/fonts/Nunito-Regular.ttf');
+const FONT = path.resolve('assets/fonts/Segoe UI Italic.ttf');
 const LINE_HEIGHT = 50;
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
