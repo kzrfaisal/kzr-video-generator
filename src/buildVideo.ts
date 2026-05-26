@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { ensureDir, formatTimestamp } from './utils';
+import { config } from '../config';
 
 const TRANSITIONS: Record<string, string> = {
   'HOST,A': 'assets/videos/transition_H_to_A.mp4',
@@ -40,7 +41,7 @@ export function run(debateName: string): void {
       const prev = segmentFiles[i - 1].split('_').at(-1)!.replace('.mp4', '');
       const curr = segmentFiles[i].split('_').at(-1)!.replace('.mp4', '');
 
-      if (prev !== curr) {
+      if (prev !== curr && config.includeTransitions) {
         const key = `${prev},${curr}`;
         const transition = TRANSITIONS[key];
         if (transition && fs.existsSync(transition)) {

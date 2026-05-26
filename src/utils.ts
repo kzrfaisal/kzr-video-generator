@@ -46,6 +46,14 @@ export function escapeDrawtext(text: string): string {
     .replace(/\]/g, '\\]');
 }
 
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u02BC]/g, "'")  // curly apostrophes / modifier letter apostrophe → straight
+    .replace(/[\u201C\u201D]/g, '"')         // curly double quotes → straight
+    .replace(/\u2013/g, '-')                 // en dash → hyphen
+    .replace(/\u2014/g, '-');                // em dash → hyphen
+}
+
 // Parse a debate .txt file into DebateLine[].
 // Validates every non-empty line matches SPEAKER|text format.
 export function parseDebateFile(filePath: string): DebateLine[] {
@@ -58,7 +66,7 @@ export function parseDebateFile(filePath: string): DebateLine[] {
     if (!match) {
       throw new Error(`Invalid line in debate file: "${line}"`);
     }
-    result.push({ speaker: match[1], text: match[2].trim() });
+    result.push({ speaker: match[1], text: sanitizeText(match[2].trim()) });
   }
 
   return result;

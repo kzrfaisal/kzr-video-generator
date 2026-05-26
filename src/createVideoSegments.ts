@@ -112,7 +112,7 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
     return filePath;
   });
 
-  const allFilters: string[] = [];
+  const allFilters: string[] = ['scale=trunc(iw/2)*2:trunc(ih/2)*2'];
 
   // Lower-third bar sits behind the text
   if (style.lowerThirdBar) {
