@@ -4,6 +4,8 @@ import readline from 'readline';
 import { run as generateScript } from './src/generateScript';
 import { run as generateAudio } from './src/generateAudio';
 import { run as makeVideo } from './src/makeVideo';
+import { run as createTransitions } from './src/createTransitions';
+import { run as addTransitionAudio } from './src/addTransitionAudio';
 import { config } from './config';
 
 const USD_TO_INR = 84;
@@ -42,11 +44,19 @@ async function main(): Promise<void> {
   const { characters, audioCost } = await generateAudio(debateName);
   const audioTime = Date.now() - audioStart;
 
+  let transitionTime = 0;
+  if (config.createTransitions && config.includeTransitions) {
+    const transitionStart = Date.now();
+    createTransitions();
+    addTransitionAudio();
+    transitionTime = Date.now() - transitionStart;
+  }
+
   const videoStart = Date.now();
   makeVideo(debateName);
   const videoTime = Date.now() - videoStart;
 
-  const totalTime = scriptTime + audioTime + videoTime;
+  const totalTime = scriptTime + audioTime + transitionTime + videoTime;
   const total = scriptCost + audioCost;
 
   const W = 50;
@@ -76,7 +86,8 @@ async function main(): Promise<void> {
     div,
     gap,
     row('  Video'),
-    row(`    Time:   ${fmtDur(videoTime)}`),
+    ...(transitionTime > 0 ? [row(`    Transitions: ${fmtDur(transitionTime)}`)] : []),
+    row(`    Encode:  ${fmtDur(videoTime)}`),
     gap,
     div,
     gap,

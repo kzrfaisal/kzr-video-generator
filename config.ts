@@ -54,6 +54,8 @@ export const STYLES: Record<string, SubtitleStyle> = {
 };
 
 export interface Config {
+  /** Auto-generate transition videos before building the final video */
+  createTransitions: boolean;
   /** Set to true to insert transition videos between speaker switches */
   includeTransitions: boolean;
 
@@ -94,8 +96,10 @@ export interface Config {
 }
 
 export const config: Config = {
+  /** Auto-generate transition videos before building the final video */
+  createTransitions: false,
   /** Set to true to insert transition videos between speaker switches */
-  includeTransitions: false,
+  includeTransitions: true,
 
   /** Which subtitle style to use; must be a key of STYLES in this file */
   subtitleStyle: 'top-classic',
