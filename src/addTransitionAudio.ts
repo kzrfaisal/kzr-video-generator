@@ -20,6 +20,7 @@ function addAudio(transitionName: string): void {
     '-i', inputVideo,
     '-i', AUDIO_FILE,
     '-map', '0:v', '-map', '1:a',
+    '-af', 'apad',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30',
     '-c:a', 'aac', '-ar', '22050', '-ac', '1', '-b:a', '64k',
     '-shortest',

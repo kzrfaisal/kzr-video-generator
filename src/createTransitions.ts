@@ -23,10 +23,14 @@ function createTransition(from: string, to: string): void {
 
   const outputPath = `assets/videos/transition_${from}_to_${to}.mp4`;
 
+  const HOLD = 0.5;
+  const firstDur = config.transitionDuration;
+  const secondDur = config.transitionDuration + HOLD;
+
   const args = [
     '-y',
-    '-loop', '1', '-t', '1', '-i', fromImage,
-    '-loop', '1', '-t', '1', '-i', toImage,
+    '-loop', '1', '-t', String(firstDur), '-i', fromImage,
+    '-loop', '1', '-t', String(secondDur), '-i', toImage,
     '-filter_complex', `[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v0];[1:v][v0]scale2ref[v1][v0r];[v0r][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`,
     '-r', String(config.fps),
     outputPath,
