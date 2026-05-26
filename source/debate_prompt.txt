@@ -2,7 +2,7 @@ You are writing a short YouTube debate script.
 
 TOPIC: {topic}
 
-VIDEO LENGTH TARGET: about 2-4 minutes.
+VIDEO LENGTH TARGET: about {videoLength}.
 
 FORMAT RULES:
 

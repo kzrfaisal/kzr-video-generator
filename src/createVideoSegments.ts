@@ -4,24 +4,31 @@ import { spawnSync } from 'child_process';
 import { ensureDir, wrapText, parseDebateFile } from './utils';
 import { config, STYLES, SubtitleStyle } from '../config';
 
-const IMAGE_MAP: Record<string, string> = {
-  HOST: 'assets/images/image_H.png',
-  A: 'assets/images/image_A.png',
-  B: 'assets/images/image_B.png',
-};
-
-
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
-  const lh = config.subtitleLineHeight;
+  const lh = style.lineHeight ?? config.subtitleLineHeight;
   if (style.position === 'top') {
     return String(style.margin + lineIndex * lh);
+  }
+  if (style.position === 'center') {
+    return `(h-${lineCount * lh})/2+${lineIndex * lh}`;
   }
   return `h-${style.margin + (lineCount - lineIndex) * lh}`;
 }
 
+function resolveStyleAndImage(speaker: string): { styleName: string; image: string } {
+  const useStyle2Host = speaker === 'HOST' && config.videoStyle === 'style2';
+  if (useStyle2Host) {
+    return { styleName: 'big-center', image: config.style2HostImage };
+  }
+  return {
+    styleName: config.subtitleStyle,
+    image: config.images[speaker] ?? config.images['A'],
+  };
+}
+
 function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const opts: string[] = [
-    `fontfile=${path.resolve(config.font)}`,
+    `fontfile=${path.resolve(style.font ?? config.font)}`,
     `textfile=${filePath}`,
     `fontcolor=${style.fontcolor}`,
     `fontsize=${style.fontsize}`,
@@ -39,9 +46,9 @@ function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: num
   return `drawtext=${opts.join(':')}`;
 }
 
-function createSegment(image: string, audio: string, text: string, outputPath: string): void {
-  const style = STYLES[config.subtitleStyle] ?? STYLES['youtube-classic'];
-  const wrapped = wrapText(text, config.subtitleWrapWidth);
+function createSegment(image: string, audio: string, text: string, outputPath: string, styleName: string): void {
+  const style = STYLES[styleName] ?? STYLES['youtube-classic'];
+  const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
 
   const textFiles = wrapped.map((line, i) => {
     const filePath = path.resolve(outputPath.replace('.mp4', `_line${i}.txt`));
@@ -54,7 +61,7 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
   // Lower-third bar sits behind the text
   if (style.lowerThirdBar) {
     const { color, padding } = style.lowerThirdBar;
-    const lh = config.subtitleLineHeight;
+    const lh = style.lineHeight ?? config.subtitleLineHeight;
     const barHeight = wrapped.length * lh + padding * 2;
     const barY = `ih-${style.margin + wrapped.length * lh + padding}`;
     allFilters.push(`drawbox=x=0:y=${barY}:w=iw:h=${barHeight}:color=${color}:t=fill`);
@@ -103,13 +110,13 @@ export function run(debateName: string): void {
 
   files.forEach((file: string, idx: number) => {
     const speaker = file.split('_')[1].split('.')[0];
-    const image = IMAGE_MAP[speaker] ?? IMAGE_MAP['A'];
+    const { styleName, image } = resolveStyleAndImage(speaker);
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.mp4`);
     const text = lines[idx].text;
 
     console.log(`Creating segment for ${file}`);
-    createSegment(image, audioPath, text, segmentPath);
+    createSegment(image, audioPath, text, segmentPath, styleName);
   });
 }
 

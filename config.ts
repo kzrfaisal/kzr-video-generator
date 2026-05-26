@@ -9,9 +9,15 @@ export interface SubtitleStyle {
   box?: number;
   boxcolor?: string;
   boxborderw?: number;
-  position: 'top' | 'bottom';
+  position: 'top' | 'bottom' | 'center';
   margin: number;
   lowerThirdBar?: { color: string; padding: number };
+  /** Override config.subtitleWrapWidth for this style (chars per line) */
+  wrapWidth?: number;
+  /** Override config.subtitleLineHeight for this style (pixel gap between lines) */
+  lineHeight?: number;
+  /** Override config.font for this style (.ttf path) */
+  font?: string;
 }
 
 export const STYLES: Record<string, SubtitleStyle> = {
@@ -51,6 +57,14 @@ export const STYLES: Record<string, SubtitleStyle> = {
     shadowcolor: 'black', shadowx: 2, shadowy: 2,
     position: 'top', margin: 120,
   },
+  // Large vertically-centered text — for style2 host moments / quote slides
+  'big-center': {
+    fontsize: 72, fontcolor: 'white',
+    bordercolor: 'black', borderw: 5,
+    position: 'center', margin: 0,
+    wrapWidth: 32, lineHeight: 95,
+    // font: 'assets/fonts/Segoe UI.ttf',
+  },
 };
 
 export interface Config {
@@ -58,6 +72,13 @@ export interface Config {
   createTransitions: boolean;
   /** Set to true to insert transition videos between speaker switches */
   includeTransitions: boolean;
+
+  /** Video style preset — 'style2' swaps host image + subtitles for HOST lines */
+  videoStyle: 'style1' | 'style2';
+  /** Speaker → image path used for non-host segments and for HOST in style1 */
+  images: Record<string, string>;
+  /** Image used for HOST segments when videoStyle is 'style2' (abstract background) */
+  style2HostImage: string;
 
   /** Which subtitle style to use; must be a key of STYLES in this file */
   subtitleStyle: keyof typeof STYLES;
@@ -77,6 +98,8 @@ export interface Config {
 
   /** OpenAI model used to generate the debate script */
   scriptModel: string;
+  /** Target video length passed to the script prompt (e.g. '5-7 minutes') */
+  videoLengthTarget: string;
 
   /** libx264 CRF quality (0–51): lower = better quality, larger file */
   videoCrf: number;
@@ -101,6 +124,17 @@ export const config: Config = {
   /** Set to true to insert transition videos between speaker switches */
   includeTransitions: true,
 
+  /** Video style preset — 'style2' swaps host image + subtitles for HOST lines */
+  videoStyle: 'style1',
+  /** Speaker → image path used for non-host segments and for HOST in style1 */
+  images: {
+    HOST: 'assets/images/image_H.png',
+    A: 'assets/images/image_A.png',
+    B: 'assets/images/image_B.png',
+  },
+  /** Image used for HOST segments when videoStyle is 'style2' (abstract background) */
+  style2HostImage: 'assets/images/image_H_style3.png',
+
   /** Which subtitle style to use; must be a key of STYLES in this file */
   subtitleStyle: 'top-classic',
   /** Path to the .ttf font file used for subtitle text */
@@ -119,6 +153,8 @@ export const config: Config = {
 
   /** OpenAI model used to generate the debate script */
   scriptModel: 'gpt-4o-mini',
+  /** Target video length passed to the script prompt (e.g. '5-7 minutes') */
+  videoLengthTarget: '5-7 minutes',
 
   /** libx264 CRF quality (0–51): lower = better quality, larger file */
   videoCrf: 18,

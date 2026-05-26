@@ -18,7 +18,9 @@ export async function run(topic: string): Promise<{
   ensureDir('output/debates');
 
   const promptTemplate = fs.readFileSync('source/debate_prompt.txt', 'utf-8');
-  const prompt = promptTemplate.replace('{topic}', topic);
+  const prompt = promptTemplate
+    .replace('{topic}', topic)
+    .replace('{videoLength}', config.videoLengthTarget);
 
   const response = await client.chat.completions.create({
     model: config.scriptModel,
