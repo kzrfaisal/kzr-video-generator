@@ -63,9 +63,10 @@ export function run(debateName: string): void {
     '-f', 'concat',
     '-safe', '0',
     '-i', concatFile,
-    '-vf', 'fade=t=in:st=0:d=0.12',
+    '-vf', `fade=t=in:st=0:d=${config.fadeInDuration}`,
+    '-r', String(config.fps),
     '-c:v', 'libx264',
-    '-preset', 'slow',
+    '-preset', config.videoPreset,
     '-pix_fmt', 'yuv420p',
     outputFile,
   ], { stdio: 'inherit' });

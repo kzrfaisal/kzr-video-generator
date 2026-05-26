@@ -3,24 +3,19 @@ import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 import { ensureDir, parseDebateFile } from './utils';
+import { config } from '../config';
 
 const client = new OpenAI();
-
-const VOICE_MAP: Record<string, string> = {
-  HOST: 'alloy',
-  A: 'echo',
-  B: 'onyx',
-};
 
 const TTS_COST_PER_CHAR = 15 / 1_000_000;
 
 async function generateTts(text: string, mp3File: string, voice: string): Promise<void> {
   const response = await client.audio.speech.create({
-    model: 'tts-1',
+    model: config.ttsModel as 'tts-1' | 'tts-1-hd',
     voice: voice as 'alloy' | 'echo' | 'onyx',
     input: text,
     response_format: 'mp3',
-    speed: 1.0,
+    speed: config.ttsSpeed,
   });
   const buffer = Buffer.from(await response.arrayBuffer());
   fs.writeFileSync(mp3File, buffer);
@@ -38,7 +33,7 @@ export async function run(debateName: string): Promise<{ characters: number; aud
   let totalChars = 0;
 
   for (const { speaker, text } of lines) {
-    const voice = VOICE_MAP[speaker] ?? 'alloy';
+    const voice = config.voices[speaker] ?? 'alloy';
     const mp3File = path.join(outputDir, `${String(counter).padStart(3, '0')}_${speaker}.mp3`);
 
     console.log(`Generating: ${mp3File} using ${voice}`);

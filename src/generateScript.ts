@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'fs';
 import OpenAI from 'openai';
 import { ensureDir } from './utils';
+import { config } from '../config';
 
 const client = new OpenAI();
 
@@ -20,7 +21,7 @@ export async function run(topic: string): Promise<{
   const prompt = promptTemplate.replace('{topic}', topic);
 
   const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: config.scriptModel,
     messages: [{ role: 'user', content: prompt }],
   });
 

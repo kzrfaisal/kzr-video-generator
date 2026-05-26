@@ -1,4 +1,5 @@
 import { spawnSync } from 'child_process';
+import { config } from '../config';
 
 const IMAGE_MAP: Record<string, string> = {
   H: 'assets/images/image_H.png',
@@ -26,8 +27,8 @@ function createTransition(from: string, to: string): void {
     '-y',
     '-loop', '1', '-t', '1', '-i', fromImage,
     '-loop', '1', '-t', '1', '-i', toImage,
-    '-filter_complex', '[0:v][1:v]xfade=transition=fade:duration=1:offset=0,format=yuv420p',
-    '-r', '30',
+    '-filter_complex', `[0:v][1:v]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`,
+    '-r', String(config.fps),
     outputPath,
   ];
 
