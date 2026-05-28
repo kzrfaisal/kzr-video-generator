@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { ensureDir, formatTimestamp } from './utils';
+import { ensureDir, formatTimestamp, cleanTmp } from './utils';
 import { config } from '../config';
 
 const TRANSITIONS: Record<string, string> = {
@@ -12,11 +12,6 @@ const TRANSITIONS: Record<string, string> = {
   'B,A':    'assets/videos/transition_B_to_A.mp4',
   'B,HOST': 'assets/videos/transition_B_to_H.mp4',
 };
-
-function cleanTmp(): void {
-  fs.rmSync('tmp', { recursive: true, force: true });
-  fs.mkdirSync('tmp');
-}
 
 function ffprobeDuration(file: string): number {
   const r = spawnSync('ffprobe', [
@@ -49,19 +44,56 @@ function concatPlain(finalSequence: string[], concatFile: string, outputFile: st
   if (result.status !== 0) throw new Error('ffmpeg concat failed');
 }
 
+function speakerOf(filePath: string): string {
+  return path.basename(filePath).split('_').at(-1)!.replace('.mp4', '');
+}
+
+function mergeGroup(group: string[], outFile: string): void {
+  const listFile = outFile.replace('.mp4', '.txt');
+  fs.writeFileSync(listFile, group.map(p => `file '${path.resolve(p)}'`).join('\n'), 'utf-8');
+  const r = spawnSync('ffmpeg', [
+    '-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', outFile,
+  ], { stdio: 'inherit' });
+  if (r.status !== 0) throw new Error(`ffmpeg group concat failed: ${outFile}`);
+}
+
+/**
+ * Two-pass concat:
+ *  Pass 1 — merge runs of consecutive same-speaker segments via concat demuxer (-c copy, no re-encode).
+ *  Pass 2 — xfade across the resulting clips, so fades only land at speaker boundaries.
+ */
 function concatWithFade(finalSequence: string[], outputFile: string): void {
+  // Group consecutive same-speaker entries
+  const groups: string[][] = [];
+  for (const p of finalSequence) {
+    const last = groups[groups.length - 1];
+    if (last && speakerOf(last[0]) === speakerOf(p)) last.push(p);
+    else groups.push([p]);
+  }
+
+  // Pass 1: merge each multi-segment group; single-segment groups pass through
+  const groupDir = 'tmp/concat/groups';
+  ensureDir(groupDir);
+  const groupClips: string[] = groups.map((group, gIdx) => {
+    if (group.length === 1) return group[0];
+    const merged = path.join(groupDir, `group_${String(gIdx).padStart(3, '0')}.mp4`);
+    mergeGroup(group, merged);
+    return merged;
+  });
+
+  // Pass 2: xfade chain over the merged clips
   const D = config.transitionDuration;
-  const durations = finalSequence.map(ffprobeDuration);
+  const durations = groupClips.map(ffprobeDuration);
 
   const inputs: string[] = [];
-  finalSequence.forEach(p => { inputs.push('-i', path.resolve(p)); });
+  groupClips.forEach(p => { inputs.push('-i', path.resolve(p)); });
 
   const filters: string[] = [];
   let vLabel = '[0:v]';
   let aLabel = '[0:a]';
   let totalDur = durations[0];
 
-  for (let i = 1; i < finalSequence.length; i++) {
+  for (let i = 1; i < groupClips.length; i++) {
     const offset = (totalDur - D).toFixed(3);
     const vNext = `[v${i}]`;
     const aNext = `[a${i}]`;
@@ -132,7 +164,7 @@ export function run(debateName: string): void {
     concatPlain(finalSequence, concatFile, outputFile);
   }
 
-  cleanTmp();
+  // cleanTmp();
   console.log('Final video generated:', outputFile);
 }
 
