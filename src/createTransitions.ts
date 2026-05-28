@@ -1,11 +1,10 @@
 import { spawnSync } from 'child_process';
 import { config } from '../config';
 
-const IMAGE_MAP: Record<string, string> = {
-  H: 'assets/images/image_H.png',
-  A: 'assets/images/image_A.png',
-  B: 'assets/images/image_B.png',
-};
+function imageFor(code: string): string {
+  const key = code === 'H' ? 'HOST' : code;
+  return config.images[key];
+}
 
 const ALL_PAIRS: [string, string][] = [
   ['H', 'A'], ['H', 'B'],
@@ -14,8 +13,8 @@ const ALL_PAIRS: [string, string][] = [
 ];
 
 function createTransition(from: string, to: string): void {
-  const fromImage = IMAGE_MAP[from];
-  const toImage = IMAGE_MAP[to];
+  const fromImage = imageFor(from);
+  const toImage = imageFor(to);
 
   if (!fromImage || !toImage) {
     throw new Error(`Unknown speaker code "${from}" or "${to}". Use H, A, or B.`);
@@ -27,11 +26,15 @@ function createTransition(from: string, to: string): void {
   const firstDur = config.transitionDuration;
   const secondDur = config.transitionDuration + HOLD;
 
+  const filterChain = config.isReelStyle
+    ? `[0:v]scale=1080:1920[v0];[1:v]scale=1080:1920[v1];[v0][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`
+    : `[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v0];[1:v][v0]scale2ref[v1][v0r];[v0r][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`;
+
   const args = [
     '-y',
     '-loop', '1', '-t', String(firstDur), '-i', fromImage,
     '-loop', '1', '-t', String(secondDur), '-i', toImage,
-    '-filter_complex', `[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v0];[1:v][v0]scale2ref[v1][v0r];[v0r][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`,
+    '-filter_complex', filterChain,
     '-r', String(config.fps),
     outputPath,
   ];

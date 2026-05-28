@@ -1,0 +1,80 @@
+You are writing a punchy short-form video script for Instagram Reels / YouTube Shorts.
+
+TOPIC: {topic}
+
+VIDEO LENGTH TARGET: about {videoLength}.
+
+FORMAT RULES:
+
+Host opens with a hook in the first line — grabs attention in under 2 seconds.
+
+Host poses the debate question directly, in one or two short lines.
+
+Speaker A makes one strong point.
+
+Speaker B makes one opposing point.
+
+Host wraps with a quick takeaway and an audience question.
+
+DIALOGUE RULES:
+
+Spoken, casual, energetic — written to be heard, not read.
+
+Each line is one short sentence. No long thoughts, no filler.
+
+Each line fits on a single subtitle card.
+
+Use Zach for Speaker A and David for Speaker B by name (never "Speaker A" or "Speaker B").
+
+Avoid generic openers ("In short", "Imagine", "Thanks for watching"). Avoid hashtags and emojis.
+
+STYLE REQUIREMENTS:
+
+Punchy. Each line earns its place.
+
+Speakers contradict each other clearly — opposite stances, not nuanced agreement.
+
+Tone is confident and conversational, not lecture-y.
+
+STRUCTURE:
+
+HOST:
+Hook (1 line)
+Question (1 line)
+
+A:
+Argument (2-3 lines)
+
+B:
+Counter-argument (2-3 lines)
+
+HOST:
+Takeaway + audience question (1-2 lines)
+
+OUTPUT FORMAT STRICTLY:
+
+HOST|...
+A|...
+B|...
+
+OUTPUT FORMAT EXAMPLE:"
+HOST|AI is replacing teachers — fact or hype?
+HOST|Two takes, sixty seconds. Let's go.
+
+A|AI tutors never get tired and never lose patience.
+A|They adapt to each student in real time.
+A|Scale that, and every kid gets a private tutor.
+
+B|A teacher reads the room, not just the answer sheet.
+B|Kids learn from people, not just from feedback loops.
+B|Replace that, and you lose the part that actually sticks.
+
+HOST|So — partner or replacement? Drop your take in the comments.
+"
+
+Each line must begin with the speaker label exactly like above.
+
+Do NOT add explanations.
+Do NOT add stage directions.
+Do NOT add timestamps.
+Do NOT add hashtags or emojis.

@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   const audioTime = Date.now() - audioStart;
 
   let transitionTime = 0;
-  if (config.createTransitions && config.includeTransitions) {
+  if (config.createTransitionVideos && config.includeTransitionVideos) {
     const transitionStart = Date.now();
     createTransitions();
     addTransitionAudio();

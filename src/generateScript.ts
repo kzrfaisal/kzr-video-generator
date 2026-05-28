@@ -17,7 +17,7 @@ export async function run(topic: string): Promise<{
 }> {
   ensureDir('output/debates');
 
-  const promptTemplate = fs.readFileSync('source/debate_prompt.txt', 'utf-8');
+  const promptTemplate = fs.readFileSync(config.promptFile, 'utf-8');
   const prompt = promptTemplate
     .replace('{topic}', topic)
     .replace('{videoLength}', config.videoLengthTarget);

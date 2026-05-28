@@ -16,13 +16,9 @@ function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): stri
 }
 
 function resolveStyleAndImage(speaker: string): { styleName: string; image: string } {
-  const useStyle2Host = speaker === 'HOST' && config.videoStyle === 'style2';
-  if (useStyle2Host) {
-    return { styleName: 'big-center', image: config.style2HostImage };
-  }
   return {
-    styleName: config.subtitleStyle,
-    image: config.images[speaker] ?? config.images['A'],
+    styleName: config.subtitleStyle[speaker] ?? config.subtitleStyle.A,
+    image:     config.images[speaker]        ?? config.images.A,
   };
 }
 
@@ -56,7 +52,9 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
     return filePath;
   });
 
-  const allFilters: string[] = ['scale=trunc(iw/2)*2:trunc(ih/2)*2'];
+  const allFilters: string[] = [
+    config.isReelStyle ? 'scale=1080:1920' : 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+  ];
 
   // Lower-third bar sits behind the text
   if (style.lowerThirdBar) {

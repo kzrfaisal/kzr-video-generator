@@ -65,23 +65,30 @@ export const STYLES: Record<string, SubtitleStyle> = {
     wrapWidth: 32, lineHeight: 95,
     // font: 'assets/fonts/Segoe UI.ttf',
   },
+  // 9:16 reels/shorts — upper-third placement, mobile-readable size, wraps tight so 4-5 lines fit
+  'reels-top': {
+    fontsize: 56, fontcolor: 'white',
+    bordercolor: 'black', borderw: 4,
+    position: 'top', margin: 320,
+    wrapWidth: 22, lineHeight: 72,
+  },
 };
 
 export interface Config {
-  /** Auto-generate transition videos before building the final video */
-  createTransitions: boolean;
-  /** Set to true to insert transition videos between speaker switches */
-  includeTransitions: boolean;
+  /** Auto-generate prerendered transition video clips before building the final video */
+  createTransitionVideos: boolean;
+  /** Insert prerendered transition video clips between speaker switches in the final video */
+  includeTransitionVideos: boolean;
+  /** Style applied between consecutive segments at concat time. 'none' = hard cut (current behavior); 'fade' = ffmpeg xfade crossfade between every adjacent pair. */
+  transitionStyle: 'none' | 'fade';
 
-  /** Video style preset — 'style2' swaps host image + subtitles for HOST lines */
-  videoStyle: 'style1' | 'style2';
-  /** Speaker → image path used for non-host segments and for HOST in style1 */
+  /** Active video-style preset key into VIDEO_STYLES (e.g. 'style1', 'style2', 'style3') */
+  videoStyle: string;
+  /** Speaker → image path used for that speaker's segments */
   images: Record<string, string>;
-  /** Image used for HOST segments when videoStyle is 'style2' (abstract background) */
-  style2HostImage: string;
 
-  /** Which subtitle style to use; must be a key of STYLES in this file */
-  subtitleStyle: keyof typeof STYLES;
+  /** Per-speaker subtitle style name (must be a key of STYLES) */
+  subtitleStyle: Record<string, keyof typeof STYLES>;
   /** Path to the .ttf font file used for subtitle text */
   font: string;
   /** Vertical pixel gap between subtitle lines */
@@ -100,7 +107,11 @@ export interface Config {
   scriptModel: string;
   /** Target video length passed to the script prompt (e.g. '5-7 minutes') */
   videoLengthTarget: string;
+  /** Path to the script prompt template file */
+  promptFile: string;
 
+  /** When true, render at 9:16 reels dimensions (scale-to-fit + black padding). When false, keep the input image's native dimensions. */
+  isReelStyle: boolean;
   /** libx264 CRF quality (0–51): lower = better quality, larger file */
   videoCrf: number;
   /** libx264 encoding preset: slower = smaller file (ultrafast → veryslow) */
@@ -118,57 +129,98 @@ export interface Config {
   transitionDuration: number;
 }
 
-export const config: Config = {
-  /** Auto-generate transition videos before building the final video */
-  createTransitions: false,
-  /** Set to true to insert transition videos between speaker switches */
-  includeTransitions: true,
+/**
+ * Default values applied before a style preset is layered on top.
+ * To change behavior for a single preset, edit that preset in VIDEO_STYLES.
+ * To change behavior everywhere, edit baseConfig.
+ */
+const baseConfig: Config = {
+  createTransitionVideos: false,
+  includeTransitionVideos: false,
+  transitionStyle: 'none',
 
-  /** Video style preset — 'style2' swaps host image + subtitles for HOST lines */
-  videoStyle: 'style1',
-  /** Speaker → image path used for non-host segments and for HOST in style1 */
+  videoStyle: 'style3',
   images: {
     HOST: 'assets/images/image_H.png',
     A: 'assets/images/image_A.png',
     B: 'assets/images/image_B.png',
   },
-  /** Image used for HOST segments when videoStyle is 'style2' (abstract background) */
-  style2HostImage: 'assets/images/image_H_style3.png',
 
-  /** Which subtitle style to use; must be a key of STYLES in this file */
-  subtitleStyle: 'top-classic',
-  /** Path to the .ttf font file used for subtitle text */
+  subtitleStyle: {
+    HOST: 'top-classic',
+    A: 'top-classic',
+    B: 'top-classic',
+  },
   font: 'assets/fonts/Segoe UI Italic.ttf',
-  /** Vertical pixel gap between subtitle lines */
   subtitleLineHeight: 50,
-  /** Maximum characters per subtitle line before wrapping */
   subtitleWrapWidth: 72,
 
-  /** OpenAI TTS model: 'tts-1' (faster/cheaper) or 'tts-1-hd' (higher quality) */
   ttsModel: 'tts-1',
-  /** Speech speed multiplier: 1.0 is normal, range is 0.25–4.0 */
   ttsSpeed: 1.0,
-  /** OpenAI voice assigned to each speaker role */
   voices: { HOST: 'alloy', A: 'echo', B: 'onyx' },
 
-  /** OpenAI model used to generate the debate script */
   scriptModel: 'gpt-4o-mini',
-  /** Target video length passed to the script prompt (e.g. '5-7 minutes') */
   videoLengthTarget: '5-7 minutes',
+  promptFile: 'source/debate_prompt.txt',
 
-  /** libx264 CRF quality (0–51): lower = better quality, larger file */
+  isReelStyle: false,
   videoCrf: 18,
-  /** libx264 encoding preset: slower = smaller file (ultrafast → veryslow) */
   videoPreset: 'slow',
-  /** Output frame rate in frames per second */
   fps: 30,
-  /** Silence (seconds) padded after each audio clip so the image lingers */
   audioPadding: 0.4,
-  /** Duration of the fade-in effect at the start of the final video (seconds) */
   fadeInDuration: 0.12,
 
-  /** ffmpeg xfade effect name (e.g. 'fade', 'wipeleft', 'slideleft') */
   transitionEffect: 'fade',
-  /** Duration of the transition effect in seconds */
   transitionDuration: 1,
+};
+
+/**
+ * Video-style presets. Each entry is a Partial<Config> layered on top of baseConfig.
+ * Nested maps (images, voices, subtitleStyle) are replaced as a whole when overridden —
+ * spell out every key you want in the preset.
+ */
+export const VIDEO_STYLES: Record<string, Partial<Config>> = {
+  // Default look — pure baseConfig.
+  style1: {},
+
+  // Host gets an abstract background + big-center subtitle; A/B unchanged.
+  style2: {
+    images: {
+      HOST: 'assets/images/image_H_style2.png',
+      A:    'assets/images/image_A.png',
+      B:    'assets/images/image_B.png',
+    },
+    subtitleStyle: {
+      HOST: 'big-center',
+      A:    'top-classic',
+      B:    'top-classic',
+    },
+  },
+
+  // 9:16 Reels/Shorts preset. User supplies portrait assets under assets/images/reels/.
+  style3: {
+    isReelStyle: true,
+    videoLengthTarget: '30-60 seconds',
+    promptFile: 'source/reels_prompt.txt',
+    transitionDuration: 0.4,
+    subtitleStyle: {
+      HOST: 'reels-top',
+      A:    'reels-top',
+      B:    'reels-top',
+    },
+    images: {
+      HOST: 'assets/images/reels/image_H.png',
+      A:    'assets/images/reels/image_A.png',
+      B:    'assets/images/reels/image_B.png',
+    },
+  },
+};
+
+/**
+ * Active config. baseConfig values are overridden by the selected style's overrides.
+ * Shallow merge: nested objects (images, voices, subtitleStyle) are replaced wholesale.
+ */
+export const config: Config = {
+  ...baseConfig,
+  ...VIDEO_STYLES[baseConfig.videoStyle],
 };

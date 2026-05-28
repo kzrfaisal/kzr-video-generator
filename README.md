@@ -32,7 +32,13 @@ When the run completes, a **Run Report** prints with token counts, character cou
 
 ## Configuration
 
-All user-tunable settings live in [`config.ts`](config.ts). No source-file edits are needed to change behavior.
+All user-tunable settings live in [`config.ts`](config.ts). The file has three parts:
+
+1. **`baseConfig`** — defaults used by every video.
+2. **`VIDEO_STYLES`** — a map of preset name → `Partial<Config>`. Each preset declares only the fields that differ from the defaults.
+3. **`config`** (exported) — the active config, computed as `{ ...baseConfig, ...VIDEO_STYLES[baseConfig.videoStyle] }`.
+
+The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) are replaced as a whole. If a preset wants to change one entry in a map, it must spell out the full map.
 
 ### Feature flags
 
@@ -40,14 +46,14 @@ All user-tunable settings live in [`config.ts`](config.ts). No source-file edits
 |---|---|---|
 | `createTransitions` | `true` / `false` | Auto-generate transition videos during `npm start`. Only runs when `includeTransitions` is also `true`. |
 | `includeTransitions` | `true` / `false` | Insert transition clips between speaker switches in the final video. |
-| `videoStyle` | `'style1'` / `'style2'` | `style1`: normal host image + global subtitle style. `style2`: HOST segments use `style2HostImage` (abstract background) and the `big-center` subtitle style. Speakers A/B are unchanged in both. |
+| `videoStyle` | `'style1'` / `'style2'` / `'style3'` | Active preset key in `VIDEO_STYLES`. See [Video Styles](#video-styles) below. |
+| `isReelStyle` | `true` / `false` | When `true`, video segments and transitions render at 1080×1920 (9:16). Set automatically by the `style3` preset. |
 
 ### Images
 
 | Field | Description |
 |---|---|
-| `images` | `{ HOST, A, B }` map of speaker → image path. Used for non-host and for HOST in `style1`. |
-| `style2HostImage` | Image used for HOST segments when `videoStyle === 'style2'`. |
+| `images` | `{ HOST, A, B }` map of speaker → image path. Each preset can override this whole map. |
 
 ### Audio / TTS
 
@@ -62,13 +68,14 @@ All user-tunable settings live in [`config.ts`](config.ts). No source-file edits
 | Field | Default | Notes |
 |---|---|---|
 | `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate. |
-| `videoLengthTarget` | `'5-7 minutes'` | Substituted into `source/debate_prompt.txt` as the `{videoLength}` placeholder. |
+| `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
+| `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
 
 ### Subtitles
 
 | Field | Default | Notes |
 |---|---|---|
-| `subtitleStyle` | `'top-classic'` | Key from the `STYLES` map in `config.ts`. |
+| `subtitleStyle` | `{ HOST, A, B }` | Per-speaker map → key from the `STYLES` map in `config.ts`. Default has every speaker on `top-classic`. |
 | `font` | `'assets/fonts/Segoe UI Italic.ttf'` | Default font; can be overridden per style. |
 | `subtitleLineHeight` | `50` | Default gap (px) between stacked subtitle lines. |
 | `subtitleWrapWidth` | `72` | Default max characters per line before wrapping. |
@@ -92,9 +99,35 @@ All user-tunable settings live in [`config.ts`](config.ts). No source-file edits
 
 ---
 
+## Video Styles
+
+Presets live in the `VIDEO_STYLES` map in [`config.ts`](config.ts). Switch the active preset via `baseConfig.videoStyle`. Each preset is a `Partial<Config>` — list only what differs from the defaults.
+
+| Preset | Purpose | Key overrides |
+|---|---|---|
+| `style1` | Default 16:9 debate | (none — pure defaults) |
+| `style2` | Same 16:9, abstract host background + big-center subtitle for HOST only | `images.HOST`, `subtitleStyle.HOST` |
+| `style3` | 9:16 Reels/Shorts, 30–60s, portrait images, big-center subtitles | `isReelStyle`, `videoLengthTarget`, `promptFile`, `transitionDuration`, `subtitleStyle`, `images` |
+
+### Adding a new style
+
+```ts
+// in config.ts VIDEO_STYLES map
+'my-style': {
+  // Only list what differs from baseConfig.
+  // Nested maps are replaced as a whole, so spell them out fully if you touch them.
+  subtitleStyle: { HOST: 'card', A: 'card', B: 'card' },
+  videoLengthTarget: '3-4 minutes',
+},
+```
+
+Then set `videoStyle: 'my-style'` in `baseConfig`.
+
+---
+
 ## Subtitle Styles
 
-Styles are defined in the `STYLES` map in `config.ts`. Switch the active style via `config.subtitleStyle`. Built-ins:
+Styles are defined in the `STYLES` map in `config.ts`. The active preset picks which style applies per speaker via the `subtitleStyle` map. Built-ins:
 
 | Style | Look |
 |---|---|
@@ -105,6 +138,7 @@ Styles are defined in the `STYLES` map in `config.ts`. Switch the active style v
 | `lower-third` | White text on a full-width navy bar |
 | `top-classic` | White text with a small shadow (default) |
 | `big-center` | Very large, vertically-centered (used automatically for HOST in `style2`) |
+| `reels-top` | Mobile-friendly: medium size, upper-third placement, narrow wrap so 4–5 lines fit (used by `style3`) |
 
 ### Per-style overrides
 
@@ -206,12 +240,17 @@ When `config.createTransitions === true` and `config.includeTransitions === true
 
 | Path | Description |
 |---|---|
-| `assets/images/image_H.png` | HOST portrait (used in `style1`, and for A/B in both styles) |
-| `assets/images/image_A.png` | Speaker A portrait |
-| `assets/images/image_B.png` | Speaker B portrait |
-| `assets/images/image_H_style2.png` | Abstract HOST background (used when `videoStyle === 'style2'`) |
+| `assets/images/image_H.png` | HOST portrait (used by `style1`) |
+| `assets/images/image_A.png` | Speaker A portrait (`style1` and `style2`) |
+| `assets/images/image_B.png` | Speaker B portrait (`style1` and `style2`) |
+| `assets/images/image_H_style2.png` | Abstract HOST background (used by `style2`) |
+| `assets/images/reels/image_H.png` | Portrait HOST image for `style3` (9:16) |
+| `assets/images/reels/image_A.png` | Portrait Speaker A image for `style3` |
+| `assets/images/reels/image_B.png` | Portrait Speaker B image for `style3` |
 | `assets/videos/transition_*.mp4` | 6 transition clips (H↔A, H↔B, A↔B) |
 | `assets/fonts/*.ttf` | Subtitle fonts (referenced from `config.font` or per-style `font`) |
 | `assets/audios/transition_audio.wav` | Audio attached to transition clips |
 
-> Tip: Keep speaker images close to ~1380×752 (matching dimensions across all three). Oversize images (e.g. 5000×3000) drastically slow ffmpeg encoding.
+> Tip: For 16:9 styles keep speaker images close to ~1380×752 (matching dimensions across all three). For `style3` use portrait 1080×1920 images. Oversize images (e.g. 5000×3000) drastically slow ffmpeg encoding.
+
+> Note: Regenerate transitions (`npm run transitions`) after switching `videoStyle` between 16:9 and `style3`, since the active `videoStyle`'s `images` map and aspect ratio are baked into the transition clips.
