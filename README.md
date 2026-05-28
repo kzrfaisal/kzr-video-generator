@@ -44,8 +44,9 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 
 | Field | Values | Notes |
 |---|---|---|
-| `createTransitions` | `true` / `false` | Auto-generate transition videos during `npm start`. Only runs when `includeTransitions` is also `true`. |
-| `includeTransitions` | `true` / `false` | Insert transition clips between speaker switches in the final video. |
+| `createTransitionVideos` | `true` / `false` | Auto-generate prerendered transition video clips during `npm start`. Only runs when `includeTransitionVideos` is also `true`. |
+| `includeTransitionVideos` | `true` / `false` | Insert prerendered transition video clips between speaker switches in the final video. |
+| `transitionStyle` | `'none'` / `'fade'` | Style applied between consecutive segments at concat time. `'none'` = hard cut (default). `'fade'` = ffmpeg `xfade` crossfade between every adjacent pair (uses `transitionDuration` for the crossfade length). Orthogonal to `includeTransitionVideos`. |
 | `videoStyle` | `'style1'` / `'style2'` / `'style3'` | Active preset key in `VIDEO_STYLES`. See [Video Styles](#video-styles) below. |
 | `isReelStyle` | `true` / `false` | When `true`, video segments and transitions render at 1080×1920 (9:16). Set automatically by the `style3` preset. |
 
@@ -222,7 +223,7 @@ tsx src/addTransitionAudio.ts transition_B_to_H
 
 > Note: `addTransitionAudio` writes to a `.tmp.mp4` first, then renames over the original — so ffmpeg never reads and writes the same file simultaneously.
 
-When `config.createTransitions === true` and `config.includeTransitions === true`, `npm start` runs both transition generation and audio attach automatically as part of the pipeline.
+When `config.createTransitionVideos === true` and `config.includeTransitionVideos === true`, `npm start` runs both transition generation and audio attach automatically as part of the pipeline.
 
 ---
 

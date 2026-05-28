@@ -137,7 +137,7 @@ export interface Config {
 const baseConfig: Config = {
   createTransitionVideos: false,
   includeTransitionVideos: false,
-  transitionStyle: 'none',
+  transitionStyle: 'fade',
 
   videoStyle: 'style3',
   images: {
