@@ -79,8 +79,12 @@ export interface Config {
   createTransitionVideos: boolean;
   /** Insert prerendered transition video clips between speaker switches in the final video */
   includeTransitionVideos: boolean;
-  /** Style applied between consecutive segments at concat time. 'none' = hard cut (current behavior); 'fade' = ffmpeg xfade crossfade between every adjacent pair. */
-  transitionStyle: 'none' | 'fade';
+  /** Style applied between consecutive segments at concat time.
+   *  'none'     = hard cut (current behavior);
+   *  'fade'     = ffmpeg xfade crossfade between every adjacent pair (drifts on long videos due to AAC quantization);
+   *  'fade-pcm' = same as 'fade' but segments use PCM audio in .mkv so durations are sample-accurate and the chain does not drift.
+   */
+  transitionStyle: 'none' | 'fade' | 'fade-pcm';
 
   /** Active video-style preset key into VIDEO_STYLES (e.g. 'style1', 'style2', 'style3') */
   videoStyle: string;
@@ -137,9 +141,9 @@ export interface Config {
 const baseConfig: Config = {
   createTransitionVideos: false,
   includeTransitionVideos: false,
-  transitionStyle: 'none',
+  transitionStyle: 'fade-pcm',
 
-  videoStyle: 'style1',
+  videoStyle: 'style3',
   images: {
     HOST: 'assets/images/image_H.png',
     A: 'assets/images/image_A.png',

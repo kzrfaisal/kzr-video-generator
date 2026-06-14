@@ -45,7 +45,7 @@ function concatPlain(finalSequence: string[], concatFile: string, outputFile: st
 }
 
 function speakerOf(filePath: string): string {
-  return path.basename(filePath).split('_').at(-1)!.replace('.mp4', '');
+  return path.basename(filePath).replace(/\.[^.]+$/, '').split('_').at(-1)!;
 }
 
 function mergeGroup(group: string[], outFile: string): void {
@@ -89,7 +89,16 @@ function concatWithFade(finalSequence: string[], outputFile: string): void {
   groupClips.forEach(p => { inputs.push('-i', path.resolve(p)); });
 
   const filters: string[] = [];
-  let vLabel = '[0:v]';
+
+  // xfade requires both input streams to share a timebase. Single-segment groups
+  // pass through at the codec's native timebase, while groups merged via
+  // `mergeGroup -c copy` get rewritten to the MKV default (1/1000), so they
+  // disagree. Normalize every input video stream to AVTB up front.
+  for (let i = 0; i < groupClips.length; i++) {
+    filters.push(`[${i}:v]settb=AVTB[vn${i}]`);
+  }
+
+  let vLabel = '[vn0]';
   let aLabel = '[0:a]';
   let totalDur = durations[0];
 
@@ -97,7 +106,7 @@ function concatWithFade(finalSequence: string[], outputFile: string): void {
     const offset = (totalDur - D).toFixed(3);
     const vNext = `[v${i}]`;
     const aNext = `[a${i}]`;
-    filters.push(`${vLabel}[${i}:v]xfade=transition=fade:duration=${D}:offset=${offset}${vNext}`);
+    filters.push(`${vLabel}[vn${i}]xfade=transition=fade:duration=${D}:offset=${offset}${vNext}`);
     filters.push(`${aLabel}[${i}:a]acrossfade=d=${D}${aNext}`);
     vLabel = vNext;
     aLabel = aNext;
@@ -136,15 +145,16 @@ export function run(debateName: string): void {
     throw new Error(`Video segments directory does not exist: ${segmentsDir}`);
   }
 
-  const segmentFiles = fs.readdirSync(segmentsDir).filter(f => f.endsWith('.mp4')).sort();
+  const segmentExt = config.transitionStyle === 'fade-pcm' ? '.mkv' : '.mp4';
+  const segmentFiles = fs.readdirSync(segmentsDir).filter(f => f.endsWith(segmentExt)).sort();
   if (segmentFiles.length === 0) throw new Error('No video segments found');
 
   const finalSequence: string[] = [];
 
   for (let i = 0; i < segmentFiles.length; i++) {
     if (i > 0) {
-      const prev = segmentFiles[i - 1].split('_').at(-1)!.replace('.mp4', '');
-      const curr = segmentFiles[i].split('_').at(-1)!.replace('.mp4', '');
+      const prev = speakerOf(segmentFiles[i - 1]);
+      const curr = speakerOf(segmentFiles[i]);
 
       if (prev !== curr && config.includeTransitionVideos) {
         const key = `${prev},${curr}`;
@@ -160,7 +170,8 @@ export function run(debateName: string): void {
     finalSequence.push(path.join(segmentsDir, segmentFiles[i]));
   }
 
-  if (config.transitionStyle === 'fade' && finalSequence.length > 1) {
+  const usesXfade = config.transitionStyle === 'fade' || config.transitionStyle === 'fade-pcm';
+  if (usesXfade && finalSequence.length > 1) {
     concatWithFade(finalSequence, outputFile);
   } else {
     concatPlain(finalSequence, concatFile, outputFile);

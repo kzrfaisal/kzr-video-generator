@@ -68,8 +68,9 @@ function createSegment(
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
 
+  const outputBase = outputPath.replace(/\.[^.]+$/, '');
   const textFiles = wrapped.map((line, i) => {
-    const filePath = path.resolve(outputPath.replace('.mp4', `_line${i}.txt`));
+    const filePath = path.resolve(`${outputBase}_line${i}.txt`);
     fs.writeFileSync(filePath, line, 'utf-8');
     return filePath;
   });
@@ -93,6 +94,10 @@ function createSegment(
     allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style, startPadSec));
   });
 
+  // PCM audio in .mkv → sample-accurate durations, so the xfade chain in buildVideo
+  // doesn't accumulate AAC frame-quantization drift across segments.
+  const isFadePcm = config.transitionStyle === 'fade-pcm';
+
   const args = [
     '-y',
     '-loop', '1', '-i', image,
@@ -105,6 +110,7 @@ function createSegment(
     '-crf', String(config.videoCrf),
     '-preset', config.videoPreset,
     '-pix_fmt', 'yuv420p',
+    ...(isFadePcm ? ['-c:a', 'pcm_s16le'] : []),
     outputPath,
   ];
 
@@ -131,7 +137,8 @@ export function run(debateName: string): void {
   const lines = parseDebateFile(`output/debates/${debateName}.txt`);
 
   const speakerOf = (f: string) => f.split('_')[1].split('.')[0];
-  const fadeEnabled = config.transitionStyle === 'fade';
+  const fadeEnabled = config.transitionStyle === 'fade' || config.transitionStyle === 'fade-pcm';
+  const segmentExt = config.transitionStyle === 'fade-pcm' ? 'mkv' : 'mp4';
   const D = config.transitionDuration;
 
   files.forEach((file: string, idx: number) => {
@@ -148,7 +155,7 @@ export function run(debateName: string): void {
 
     const { styleName, image } = resolveStyleAndImage(speaker);
     const audioPath = path.join(audioDir, file);
-    const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.mp4`);
+    const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
     const text = lines[idx].text;
 
     console.log(`Creating segment for ${file}`);
