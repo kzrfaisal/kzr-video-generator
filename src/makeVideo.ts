@@ -1,7 +1,16 @@
 import { run as createVideoSegments } from './createVideoSegments';
 import { run as buildVideo } from './buildVideo';
+import { run as createTransitions } from './createTransitions';
+import { run as addTransitionAudio } from './addTransitionAudio';
+import { config } from '../config';
 
 export function run(debateName: string): void {
+  if (config.createTransitionVideos && config.includeTransitionVideos) {
+    console.log('Regenerating transition videos...');
+    createTransitions();
+    addTransitionAudio();
+  }
+
   console.log(`Generating segment videos for ${debateName}...`);
   createVideoSegments(debateName);
 

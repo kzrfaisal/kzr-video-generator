@@ -22,7 +22,7 @@ function resolveStyleAndImage(speaker: string): { styleName: string; image: stri
   };
 }
 
-function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle): string {
+function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle, startPadSec: number): string {
   const opts: string[] = [
     `fontfile=${path.resolve(style.font ?? config.font)}`,
     `textfile=${filePath}`,
@@ -39,6 +39,10 @@ function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: num
   if (style.box        !== undefined) opts.push(`box=${style.box}`);
   if (style.boxcolor   !== undefined) opts.push(`boxcolor=${style.boxcolor}`);
   if (style.boxborderw !== undefined) opts.push(`boxborderw=${style.boxborderw}`);
+  // Hide subtitle during the leading silence so it appears in sync with speech,
+  // not 1s early during the crossfade window. Escape the comma in gte(t,...)
+  // so ffmpeg doesn't interpret it as a filter-chain separator.
+  if (startPadSec > 0) opts.push(`enable=gte(t\\,${startPadSec})`);
   return `drawtext=${opts.join(':')}`;
 }
 
@@ -86,7 +90,7 @@ function createSegment(
   }
 
   textFiles.forEach((filePath, i) => {
-    allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style));
+    allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style, startPadSec));
   });
 
   const args = [
