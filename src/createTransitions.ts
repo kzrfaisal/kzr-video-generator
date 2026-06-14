@@ -26,9 +26,13 @@ function createTransition(from: string, to: string): void {
   const firstDur = config.transitionDuration;
   const secondDur = config.transitionDuration + HOLD;
 
-  const filterChain = config.isReelStyle
-    ? `[0:v]scale=1080:1920[v0];[1:v]scale=1080:1920[v1];[v0][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`
-    : `[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[v0];[1:v][v0]scale2ref[v1][v0r];[v0r][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`;
+  const scaleFilter = config.isReelStyle
+    ? 'scale=1080:1920'
+    : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black';
+
+  const filterChain =
+    `[0:v]${scaleFilter}[v0];[1:v]${scaleFilter}[v1];` +
+    `[v0][v1]xfade=transition=${config.transitionEffect}:duration=${config.transitionDuration}:offset=0,format=yuv420p`;
 
   const args = [
     '-y',

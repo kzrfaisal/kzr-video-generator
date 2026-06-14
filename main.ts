@@ -1,19 +1,14 @@
 import 'dotenv/config';
 import fs from 'fs';
-import readline from 'readline';
 import { run as generateScript } from './src/generateScript';
 import { run as generateAudio } from './src/generateAudio';
 import { run as makeVideo } from './src/makeVideo';
 import { run as createTransitions } from './src/createTransitions';
 import { run as addTransitionAudio } from './src/addTransitionAudio';
+import { waitForEnter } from './src/utils';
 import { config } from './config';
 
 const USD_TO_INR = 84;
-
-function waitForEnter(message: string): Promise<void> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise(resolve => rl.question(message, () => { rl.close(); resolve(); }));
-}
 
 function fmtDur(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;

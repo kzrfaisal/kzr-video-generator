@@ -9,7 +9,9 @@
     "audio": "tsx src/generateAudio.ts",
     "video": "tsx src/makeVideo.ts",
     "transitions": "tsx src/createTransitions.ts",
-    "transition-audio": "tsx src/addTransitionAudio.ts"
+    "transition-audio": "tsx src/addTransitionAudio.ts",
+    "extract-reel-scripts": "tsx src/extractReelScripts.ts",
+    "reels": "tsx src/makeReels.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

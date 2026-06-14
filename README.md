@@ -197,6 +197,46 @@ tsx src/buildVideo.ts debate1
 
 ---
 
+## Reels From an Existing Debate
+
+After generating a long-form debate, you can split its script into three reel-sized parts (opening, rebuttals, closing) and produce a short video for each — reusing the audio that was already generated for the long-form debate (no extra TTS spend).
+
+```bash
+# 1. Switch to the reels preset in config.ts:
+#    videoStyle: 'style3'    (sets isReelStyle, portrait images, 'reels-top' subtitles)
+
+# 2. One command: extracts 3 part scripts → pauses for review →
+#    reuses debate10's audio → builds 3 reel videos.
+npm run reels debate10
+# or
+tsx src/makeReels.ts debate10
+```
+
+Under the hood the command:
+
+1. Splits `output/debates/debate10.txt` into `output/debates/reels/debate10_part{1,2,3}.txt`.
+2. Pauses so you can review the 3 part scripts.
+3. Copies the relevant `.mp3` files from `output/audios/debate10/` into `output/audios/reels/debate10_part{1,2,3}/`, renumbered sequentially per part. **No TTS is re-run.**
+4. Builds a video for each part. Finals land in `output/videos/reels/debate10_partN_TIMESTAMP.mp4`.
+
+The split expects the long-form prompt's structure (HOST → A → HOST → B, three rounds, optional HOST summary). If the LLM deviated from that, the extractor errors out so you can adjust manually.
+
+### Lower-level alternatives
+
+If you'd rather drive the steps yourself (e.g. to tweak a part script before audio is copied, or to rerun a single part):
+
+```bash
+# Just split the script — does NOT copy audio or build video.
+npm run extract-reel-scripts debate10
+
+# Then for each part, either reuse the makeReels copy step manually or
+# regenerate audio + video the normal way:
+npm run audio reels/debate10_part1   # WARNING: spends TTS cost
+npm run video reels/debate10_part1
+```
+
+---
+
 ## Transition Videos
 
 Run these when you replace speaker images (`assets/images/image_H.png`, `image_A.png`, `image_B.png`) or change `config.transitionEffect` / `config.transitionDuration`.
@@ -231,7 +271,7 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 
 - Scripts: `output/debates/debateN.txt`
 - Audio: `output/audios/debateN/`
-- Final videos: `output/videos/debateN_TIMESTAMP.mp4`
+- Final videos: `output/videos/reels/` (when `isReelStyle: true`) or `output/videos/others/` (otherwise), named `debateN_TIMESTAMP.mp4`
 - Cost / timing log (JSONL, one run per line): `output/cost_log.jsonl`
 - Temp files (auto-deleted): `tmp/`
 

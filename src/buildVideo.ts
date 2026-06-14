@@ -124,11 +124,13 @@ function concatWithFade(finalSequence: string[], outputFile: string): void {
 export function run(debateName: string): void {
   const segmentsDir = `tmp/video_segments/${debateName}`;
   const concatDir = 'tmp/concat';
-  const concatFile = `tmp/concat/${debateName}_segments.txt`;
-  const outputFile = `output/videos/${debateName}_${formatTimestamp()}.mp4`;
+  const baseName = path.basename(debateName);
+  const concatFile = `${concatDir}/${baseName}_segments.txt`;
+  const outputDir = `output/videos/${config.isReelStyle ? 'reels' : 'others'}`;
+  const outputFile = `${outputDir}/${baseName}_${formatTimestamp()}.mp4`;
 
   ensureDir(concatDir);
-  ensureDir('output/videos');
+  ensureDir(outputDir);
 
   if (!fs.existsSync(segmentsDir)) {
     throw new Error(`Video segments directory does not exist: ${segmentsDir}`);
@@ -164,7 +166,7 @@ export function run(debateName: string): void {
     concatPlain(finalSequence, concatFile, outputFile);
   }
 
-  // cleanTmp();
+  cleanTmp();
   console.log('Final video generated:', outputFile);
 }
 

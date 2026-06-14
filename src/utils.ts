@@ -1,4 +1,5 @@
 import fs from 'fs';
+import readline from 'readline';
 
 export interface DebateLine {
   speaker: string;
@@ -12,6 +13,11 @@ export function ensureDir(dirPath: string): void {
 export function cleanTmp(): void {
   fs.rmSync('tmp', { recursive: true, force: true });
   fs.mkdirSync('tmp');
+}
+
+export function waitForEnter(message: string): Promise<void> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => rl.question(message, () => { rl.close(); resolve(); }));
 }
 
 export function formatTimestamp(d: Date = new Date()): string {

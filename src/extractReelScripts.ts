@@ -1,0 +1,104 @@
+import fs from 'fs';
+import { ensureDir, parseDebateFile, DebateLine } from './utils';
+
+type Block = { speaker: string; texts: string[]; origIndices: number[] };
+
+export type ExtractedPart = {
+  name: string;
+  filePath: string;
+  origLineIndices: number[];
+};
+
+function groupBlocks(lines: DebateLine[]): Block[] {
+  const blocks: Block[] = [];
+  lines.forEach((line, idx) => {
+    const last = blocks[blocks.length - 1];
+    if (last && last.speaker === line.speaker) {
+      last.texts.push(line.text);
+      last.origIndices.push(idx);
+    } else {
+      blocks.push({ speaker: line.speaker, texts: [line.text], origIndices: [idx] });
+    }
+  });
+  return blocks;
+}
+
+function blocksToScript(blocks: Block[]): string {
+  return blocks
+    .map(b => b.texts.map(t => `${b.speaker}|${t}`).join('\n'))
+    .join('\n\n') + '\n';
+}
+
+/**
+ * Split a long-form debate into 3 reel-sized parts based on the prompt's
+ * HOST-A-HOST-B-HOST-A-HOST-B-HOST-A-HOST-B-[HOST] structure:
+ *   Part 1 (opening)   = blocks 0..4   (HOST intro, A opening, HOST react, B opening)
+ *   Part 2 (rebuttals) = blocks 4..8   (HOST transition, A rebuttal, HOST invite, B rebuttal)
+ *   Part 3 (closing)   = blocks 8..end (HOST transition, A closing, HOST invite, B closing, optional HOST summary)
+ *
+ * Writes each part to output/debates/reels/<debateName>_partN.txt and returns
+ * metadata (including the original line indices each part spans) so callers can
+ * copy the matching pre-rendered audio files without re-running TTS.
+ */
+export function extract(debateName: string): ExtractedPart[] {
+  const inputFile = `output/debates/${debateName}.txt`;
+  if (!fs.existsSync(inputFile)) {
+    throw new Error(`Debate file not found: ${inputFile}`);
+  }
+
+  const lines = parseDebateFile(inputFile);
+  const blocks = groupBlocks(lines);
+
+  const expected = ['HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B'];
+  if (blocks.length < expected.length) {
+    throw new Error(
+      `Expected at least ${expected.length} speaker blocks following HOST-A-HOST-B rounds, got ${blocks.length}. ` +
+      `The script doesn't match the long-form debate structure — extract manually.`
+    );
+  }
+  for (let i = 0; i < expected.length; i++) {
+    if (blocks[i].speaker !== expected[i]) {
+      throw new Error(
+        `Block ${i} is ${blocks[i].speaker}, expected ${expected[i]}. ` +
+        `The script doesn't match the long-form debate structure — extract manually.`
+      );
+    }
+  }
+
+  const partSpecs: [string, Block[]][] = [
+    [`${debateName}_part1`, blocks.slice(0, 4)],
+    [`${debateName}_part2`, blocks.slice(4, 8)],
+    [`${debateName}_part3`, blocks.slice(8)],
+  ];
+
+  const reelsDir = 'output/debates/reels';
+  ensureDir(reelsDir);
+
+  const parts: ExtractedPart[] = partSpecs.map(([name, partBlocks]) => {
+    const filePath = `${reelsDir}/${name}.txt`;
+    fs.writeFileSync(filePath, blocksToScript(partBlocks), 'utf-8');
+    console.log(`Wrote: ${filePath}`);
+    const origLineIndices = partBlocks.flatMap(b => b.origIndices);
+    return { name, filePath, origLineIndices };
+  });
+
+  return parts;
+}
+
+export function run(debateName: string): void {
+  extract(debateName);
+}
+
+if (require.main === module) {
+  const debateName = process.argv[2];
+  if (!debateName) {
+    console.error('Usage: tsx src/extractReelScripts.ts <debate_name>');
+    process.exit(1);
+  }
+  try {
+    run(debateName);
+  } catch (err: any) {
+    console.error(err.message);
+    process.exit(1);
+  }
+}

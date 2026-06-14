@@ -42,7 +42,25 @@ function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: num
   return `drawtext=${opts.join(':')}`;
 }
 
-function createSegment(image: string, audio: string, text: string, outputPath: string, styleName: string): void {
+function buildAudioFilter(startPadSec: number, endPadSec: number): string {
+  const filters: string[] = [];
+  if (startPadSec > 0) {
+    const ms = Math.round(startPadSec * 1000);
+    filters.push(`adelay=delays=${ms}:all=1`);
+  }
+  filters.push(`apad=pad_dur=${endPadSec}`);
+  return filters.join(',');
+}
+
+function createSegment(
+  image: string,
+  audio: string,
+  text: string,
+  outputPath: string,
+  styleName: string,
+  startPadSec: number,
+  endPadSec: number,
+): void {
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
 
@@ -53,7 +71,9 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
   });
 
   const allFilters: string[] = [
-    config.isReelStyle ? 'scale=1080:1920' : 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+    config.isReelStyle
+      ? 'scale=1080:1920'
+      : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
   ];
 
   // Lower-third bar sits behind the text
@@ -74,7 +94,7 @@ function createSegment(image: string, audio: string, text: string, outputPath: s
     '-loop', '1', '-i', image,
     '-i', audio,
     '-vf', allFilters.join(','),
-    '-af', `apad=pad_dur=${config.audioPadding}`,
+    '-af', buildAudioFilter(startPadSec, endPadSec),
     '-shortest',
     '-r', String(config.fps),
     '-c:v', 'libx264',
@@ -106,15 +126,29 @@ export function run(debateName: string): void {
 
   const lines = parseDebateFile(`output/debates/${debateName}.txt`);
 
+  const speakerOf = (f: string) => f.split('_')[1].split('.')[0];
+  const fadeEnabled = config.transitionStyle === 'fade';
+  const D = config.transitionDuration;
+
   files.forEach((file: string, idx: number) => {
-    const speaker = file.split('_')[1].split('.')[0];
+    const speaker = speakerOf(file);
+    const prevSpeaker = idx > 0 ? speakerOf(files[idx - 1]) : null;
+    const nextSpeaker = idx < files.length - 1 ? speakerOf(files[idx + 1]) : null;
+
+    // Pad with silence at speaker boundaries so the xfade/acrossfade window in
+    // buildVideo lands in silence instead of clipping into actual speech.
+    const startPadSec = fadeEnabled && prevSpeaker !== null && prevSpeaker !== speaker ? D : 0;
+    const endPadSec   = fadeEnabled && nextSpeaker !== null && nextSpeaker !== speaker
+      ? Math.max(config.audioPadding, D)
+      : config.audioPadding;
+
     const { styleName, image } = resolveStyleAndImage(speaker);
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.mp4`);
     const text = lines[idx].text;
 
     console.log(`Creating segment for ${file}`);
-    createSegment(image, audioPath, text, segmentPath, styleName);
+    createSegment(image, audioPath, text, segmentPath, styleName, startPadSec, endPadSec);
   });
 }
 
