@@ -25,6 +25,9 @@ A single line of 8-12 space-separated hashtags relevant to the topic. Each hasht
 ## Reel 3 — Closing Caption
 1-2 sentences covering the closing statements and the host's takeaway. End with 3-5 relevant hashtags.
 
+## Thumbnail Hook
+A single line, 3-6 words, all caps preferred. A punchy question or stark contrast about the topic — designed to be readable on a phone-sized YouTube thumbnail. No hashtags, no quotes, no trailing punctuation other than `?` or `!`.
+
 OUTPUT RULES:
 - Use the exact h2 headings shown above.
 - Do NOT add any wrapper, intro line, top-level title, or code fences.

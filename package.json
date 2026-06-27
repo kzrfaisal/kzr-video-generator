@@ -6,6 +6,7 @@
   "scripts": {
     "start": "tsx main.ts",
     "script": "tsx src/generateScript.ts",
+    "thumbnail": "tsx src/generateThumbnail.ts",
     "audio": "tsx src/generateAudio.ts",
     "video": "tsx src/makeVideo.ts",
     "transitions": "tsx src/createTransitions.ts",

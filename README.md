@@ -72,6 +72,8 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 | `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
 | `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
 | `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions) via one extra `scriptModel` call. Set to `false` to skip — only the script `.txt` is written and no extra call is made. |
+| `generateThumbnail` | `true` | When `true`, the script stage also renders a 1280×720 `debateN.thumbnail.jpg` using `thumbnailBackground` + the `## Thumbnail Hook` line from the metadata file. Requires `generateMetadata: true`. No extra OpenAI call. |
+| `thumbnailBackground` | `'assets/images/image_H.png'` | Background image overlaid with the `DEBATE` label + center hook text by ffmpeg `drawtext`. Any 16:9 image works; non-16:9 is letterboxed with black bars. |
 
 ### Subtitles
 
@@ -287,6 +289,7 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 
 - Scripts: `output/debates/debateN.txt`
 - Publishing metadata: `output/debates/debateN.metadata.md` (YouTube title/description/hashtags + 3 reel captions; skipped when `generateMetadata: false`)
+- Thumbnail: `output/debates/debateN.thumbnail.jpg` (1280×720, `thumbnailBackground` + `DEBATE` label + hook text from metadata; skipped when `generateThumbnail: false`)
 - Audio: `output/audios/debateN/`
 - Final videos: `output/videos/reels/` (when `isReelStyle: true`) or `output/videos/others/` (otherwise), named `debateN_TIMESTAMP.mp4`
 - Cost / timing log (JSONL, one run per line): `output/cost_log.jsonl`
@@ -336,7 +339,12 @@ Reuses an existing long-form debate's audio to build three reel videos (opening,
 ```bash
 npm run script "AI replacing teachers"
 ```
-Generates the debate script (`output/debates/debateN.txt`) and, when `generateMetadata: true` (default), also the publishing metadata file (`debateN.metadata.md`) in one go. Costs script-model tokens (script + one extra small call for metadata).
+Generates the debate script (`output/debates/debateN.txt`), and when `generateMetadata: true` (default) also the publishing metadata file (`debateN.metadata.md`) and a 1280×720 YouTube thumbnail (`debateN.thumbnail.jpg`, when `generateThumbnail: true`). Costs script-model tokens (script + one extra small call for metadata); the thumbnail is ffmpeg-only, no extra OpenAI cost.
+
+```bash
+npm run thumbnail debate1
+```
+Regenerates only `output/debates/debate1.thumbnail.jpg` from the existing `debate1.metadata.md` (`## Thumbnail Hook` line) + current `thumbnailBackground` / `font` config. Free (ffmpeg only) — use this to iterate on fonts, colors, or layout without re-running the script stage.
 
 ```bash
 npm run audio debate1

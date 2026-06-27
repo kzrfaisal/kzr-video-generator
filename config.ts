@@ -115,6 +115,10 @@ export interface Config {
   promptFile: string;
   /** When true, the script stage also produces a debateN.metadata.md file with YouTube title/description/hashtags and the 3 reel captions. When false, only the script .txt is written and no extra OpenAI call is made. */
   generateMetadata: boolean;
+  /** When true, the script stage also renders a 1280×720 debateN.thumbnail.jpg using config.thumbnailBackground + the `## Thumbnail Hook` line from the metadata file. Requires generateMetadata: true. */
+  generateThumbnail: boolean;
+  /** Background image used for the generated YouTube thumbnail. */
+  thumbnailBackground: string;
 
   /** When true, render at 9:16 reels dimensions (scale-to-fit + black padding). When false, keep the input image's native dimensions. */
   isReelStyle: boolean;
@@ -169,6 +173,8 @@ const baseConfig: Config = {
   videoLengthTarget: '5-7 minutes',
   promptFile: 'source/debate_prompt.txt',
   generateMetadata: true,
+  generateThumbnail: true,
+  thumbnailBackground: 'assets/images/image_H.png',
 
   isReelStyle: false,
   videoCrf: 18,
