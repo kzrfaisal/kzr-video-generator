@@ -113,6 +113,8 @@ export interface Config {
   videoLengthTarget: string;
   /** Path to the script prompt template file */
   promptFile: string;
+  /** When true, the script stage also produces a debateN.metadata.md file with YouTube title/description/hashtags and the 3 reel captions. When false, only the script .txt is written and no extra OpenAI call is made. */
+  generateMetadata: boolean;
 
   /** When true, render at 9:16 reels dimensions (scale-to-fit + black padding). When false, keep the input image's native dimensions. */
   isReelStyle: boolean;
@@ -143,7 +145,7 @@ const baseConfig: Config = {
   includeTransitionVideos: false,
   transitionStyle: 'fade-pcm',
 
-  videoStyle: 'style3',
+  videoStyle: 'style1',
   images: {
     HOST: 'assets/images/image_H.png',
     A: 'assets/images/image_A.png',
@@ -166,6 +168,7 @@ const baseConfig: Config = {
   scriptModel: 'gpt-4o-mini',
   videoLengthTarget: '5-7 minutes',
   promptFile: 'source/debate_prompt.txt',
+  generateMetadata: true,
 
   isReelStyle: false,
   videoCrf: 18,

@@ -1,0 +1,32 @@
+You write publishing metadata for a YouTube debate video and its 3 Instagram/Shorts reels (opening, rebuttals, closing).
+
+TOPIC: {topic}
+
+DEBATE SCRIPT (raw SPEAKER|text lines — HOST moderates; A and B are the two debaters):
+{script}
+
+Produce a single markdown document with EXACTLY these 6 sections, in this exact order, using these exact h2 headings:
+
+## YouTube Title
+A single line, max 70 characters, attention-grabbing but not clickbait. No surrounding quotes.
+
+## YouTube Description
+3-5 short paragraphs. Open with a 1-sentence hook. Briefly describe what's being debated and the two perspectives without giving away the conclusion. End with a call to action (subscribe / share your view in the comments).
+
+## Hashtags
+A single line of 8-12 space-separated hashtags relevant to the topic. Each hashtag starts with #.
+
+## Reel 1 — Opening Caption
+1-2 sentences covering the opening exchange (host intro + each side's first argument). End the caption with 3-5 relevant hashtags on the same or next line.
+
+## Reel 2 — Rebuttals Caption
+1-2 sentences covering the middle exchange (the rebuttals between the two debaters). End with 3-5 relevant hashtags.
+
+## Reel 3 — Closing Caption
+1-2 sentences covering the closing statements and the host's takeaway. End with 3-5 relevant hashtags.
+
+OUTPUT RULES:
+- Use the exact h2 headings shown above.
+- Do NOT add any wrapper, intro line, top-level title, or code fences.
+- Do NOT include meta-explanations of what each section is — just produce the content.
+- Reel captions and YouTube description should not duplicate each other verbatim.

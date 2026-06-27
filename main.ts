@@ -27,8 +27,9 @@ async function main(): Promise<void> {
   }
 
   // 1. Script — generate the debate text via OpenAI and save to output/debates/<debateName>.txt
+  //    Also produces <debateName>.metadata.md when config.generateMetadata is true.
   const scriptStart = Date.now();
-  const { debateName, promptTokens, completionTokens, scriptCost } = await generateScript(topic);
+  const { debateName, promptTokens, completionTokens, scriptCost, metadata } = await generateScript(topic);
   const scriptTime = Date.now() - scriptStart;
 
   // 2. Manual review checkpoint — pause so the user can edit the script before paying for TTS
@@ -46,7 +47,7 @@ async function main(): Promise<void> {
   const videoTime = Date.now() - videoStart;
 
   const totalTime = scriptTime + audioTime + videoTime;
-  const total = scriptCost + audioCost;
+  const total = scriptCost + metadata.cost + audioCost;
 
   const W = 50;
   const bar = '═'.repeat(W);
@@ -64,6 +65,13 @@ async function main(): Promise<void> {
     row(`    Output tokens:  ${completionTokens}`),
     row(`    Cost:   ${fmtCost(scriptCost)}`),
     row(`    Time:   ${fmtDur(scriptTime)}`),
+    ...(metadata.cost > 0 ? [
+      gap,
+      row(`  Metadata  (${config.scriptModel})`),
+      row(`    Input tokens:   ${metadata.promptTokens}`),
+      row(`    Output tokens:  ${metadata.completionTokens}`),
+      row(`    Cost:   ${fmtCost(metadata.cost)}`),
+    ] : []),
     gap,
     div,
     gap,
@@ -92,6 +100,7 @@ async function main(): Promise<void> {
     debateName,
     topic,
     script: { model: config.scriptModel, promptTokens, completionTokens, cost: scriptCost, timeMs: scriptTime },
+    metadata: { model: config.scriptModel, promptTokens: metadata.promptTokens, completionTokens: metadata.completionTokens, cost: metadata.cost },
     audio: { model: config.ttsModel, characters, cost: audioCost, timeMs: audioTime },
     video: { timeMs: videoTime },
     totalCost: total,

@@ -68,9 +68,10 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 
 | Field | Default | Notes |
 |---|---|---|
-| `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate. |
+| `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate (and the metadata file). |
 | `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
 | `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
+| `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions) via one extra `scriptModel` call. Set to `false` to skip — only the script `.txt` is written and no extra call is made. |
 
 ### Subtitles
 
@@ -285,6 +286,7 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 ## Output
 
 - Scripts: `output/debates/debateN.txt`
+- Publishing metadata: `output/debates/debateN.metadata.md` (YouTube title/description/hashtags + 3 reel captions; skipped when `generateMetadata: false`)
 - Audio: `output/audios/debateN/`
 - Final videos: `output/videos/reels/` (when `isReelStyle: true`) or `output/videos/others/` (otherwise), named `debateN_TIMESTAMP.mp4`
 - Cost / timing log (JSONL, one run per line): `output/cost_log.jsonl`
@@ -334,7 +336,7 @@ Reuses an existing long-form debate's audio to build three reel videos (opening,
 ```bash
 npm run script "AI replacing teachers"
 ```
-Generates the debate script only and writes to `output/debates/debateN.txt`. Costs script-model tokens.
+Generates the debate script (`output/debates/debateN.txt`) and, when `generateMetadata: true` (default), also the publishing metadata file (`debateN.metadata.md`) in one go. Costs script-model tokens (script + one extra small call for metadata).
 
 ```bash
 npm run audio debate1
