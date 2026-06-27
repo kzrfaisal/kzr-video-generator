@@ -310,3 +310,67 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 > Tip: For 16:9 styles keep speaker images close to ~1380×752 (matching dimensions across all three). For `style3` use portrait 1080×1920 images. Oversize images (e.g. 5000×3000) drastically slow ffmpeg encoding.
 
 > Note: Regenerate transitions (`npm run transitions`) after switching `videoStyle` between 16:9 and `style3`, since the active `videoStyle`'s `images` map and aspect ratio are baked into the transition clips.
+
+---
+
+## Commands
+
+All commands accept `--style=<name>` to override `baseConfig.videoStyle` for that run (see [Picking the style per run](#picking-the-style-per-run-no-config-edit)).
+
+### End-to-end pipelines
+
+```bash
+npm start "AI replacing teachers"
+```
+Full pipeline: generates the debate script, pauses for review, runs TTS, builds the final video.
+
+```bash
+npm run reels debate10
+```
+Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No extra TTS cost.
+
+### Individual stages
+
+```bash
+npm run script "AI replacing teachers"
+```
+Generates the debate script only and writes to `output/debates/debateN.txt`. Costs script-model tokens.
+
+```bash
+npm run audio debate1
+```
+Runs OpenAI TTS for every line of `output/debates/debate1.txt` and writes per-line mp3s to `output/audios/debate1/`. Costs TTS characters.
+
+```bash
+npm run video debate1
+```
+Builds segments + final video from existing audio. Free (ffmpeg only). Honors `createTransitionVideos`/`includeTransitionVideos` to regenerate and splice transition clips.
+
+### Reels helpers
+
+```bash
+npm run extract-reel-scripts debate10
+```
+Splits `output/debates/debate10.txt` into three reel-sized part scripts under `output/debates/reels/`. Does not copy audio or build video — use this when you want to edit part scripts manually before continuing.
+
+### Transition assets
+
+```bash
+npm run transitions
+```
+Rebuilds all six speaker-to-speaker transition video clips at the active style's dimensions. Run after swapping images or changing `transitionEffect`/`transitionDuration`.
+
+```bash
+tsx src/createTransitions.ts H A
+```
+Rebuilds a single transition (`H → A` here). Speaker codes: `H`, `A`, `B`.
+
+```bash
+npm run transition-audio
+```
+Mixes `assets/audios/transition_audio.wav` into all transition clips in place (via a `.tmp.mp4` swap).
+
+```bash
+tsx src/addTransitionAudio.ts transition_B_to_H
+```
+Adds the transition audio to a single named clip.
