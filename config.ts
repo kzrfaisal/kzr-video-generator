@@ -221,10 +221,40 @@ export const VIDEO_STYLES: Record<string, Partial<Config>> = {
 };
 
 /**
+ * Read `--style=<name>` (or `--style <name>`) so any CLI entry point can override
+ * `baseConfig.videoStyle` without editing this file. Both work:
+ *   npm start "topic" --style=style2          (npm consumes the flag → env var)
+ *   tsx src/makeVideo.ts deb10 --style=style3 (direct invocation → argv)
+ *   npm run reels deb10 -- --style=style3     (npm with `--` passthrough → argv)
+ */
+function parseStyleFlag(): string | undefined {
+  // npm strips long flags from `npm run <script>` and exposes them as
+  // npm_config_<name>. Check this first so the bare `npm run ... --style=X`
+  // form works without the `--` separator.
+  if (process.env.npm_config_style) return process.env.npm_config_style;
+
+  const args = process.argv;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--style' && args[i + 1]) return args[i + 1];
+    const m = args[i].match(/^--style=(.+)$/);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+const activeStyle = parseStyleFlag() ?? baseConfig.videoStyle;
+if (!(activeStyle in VIDEO_STYLES)) {
+  throw new Error(
+    `Unknown video style: "${activeStyle}". Available: ${Object.keys(VIDEO_STYLES).join(', ')}`
+  );
+}
+
+/**
  * Active config. baseConfig values are overridden by the selected style's overrides.
  * Shallow merge: nested objects (images, voices, subtitleStyle) are replaced wholesale.
  */
 export const config: Config = {
   ...baseConfig,
-  ...VIDEO_STYLES[baseConfig.videoStyle],
+  ...VIDEO_STYLES[activeStyle],
+  videoStyle: activeStyle,
 };

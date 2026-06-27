@@ -26,17 +26,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // 1. Script — generate the debate text via OpenAI and save to output/debates/<debateName>.txt
   const scriptStart = Date.now();
   const { debateName, promptTokens, completionTokens, scriptCost } = await generateScript(topic);
   const scriptTime = Date.now() - scriptStart;
 
+  // 2. Manual review checkpoint — pause so the user can edit the script before paying for TTS
   console.log(`\nUsing script: ${debateName}.txt`);
   await waitForEnter(`\nReview the script before continuing:\noutput/debates/${debateName}.txt\n\nPress ENTER when ready to generate video...`);
 
+  // 3. Audio — per-line OpenAI TTS into output/audios/<debateName>/NNN_<speaker>.mp3
   const audioStart = Date.now();
   const { characters, audioCost } = await generateAudio(debateName);
   const audioTime = Date.now() - audioStart;
 
+  // 4. Video — segments per line, optional prerendered transitions, final concat (see src/makeVideo.ts)
   const videoStart = Date.now();
   makeVideo(debateName);
   const videoTime = Date.now() - videoStart;

@@ -102,13 +102,28 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 
 ## Video Styles
 
-Presets live in the `VIDEO_STYLES` map in [`config.ts`](config.ts). Switch the active preset via `baseConfig.videoStyle`. Each preset is a `Partial<Config>` — list only what differs from the defaults.
+Presets live in the `VIDEO_STYLES` map in [`config.ts`](config.ts). Switch the active preset via `baseConfig.videoStyle` **or** override per-run with `--style=<name>` on the command line. Each preset is a `Partial<Config>` — list only what differs from the defaults.
 
 | Preset | Purpose | Key overrides |
 |---|---|---|
 | `style1` | Default 16:9 debate | (none — pure defaults) |
 | `style2` | Same 16:9, abstract host background + big-center subtitle for HOST only | `images.HOST`, `subtitleStyle.HOST` |
 | `style3` | 9:16 Reels/Shorts, 30–60s, portrait images, big-center subtitles | `isReelStyle`, `videoLengthTarget`, `promptFile`, `transitionDuration`, `subtitleStyle`, `images` |
+
+### Picking the style per run (no config edit)
+
+Any CLI entry point reads `--style=<name>` (or env `npm_config_style`) at startup and uses it instead of `baseConfig.videoStyle`:
+
+```bash
+npm start "AI replacing teachers" --style=style2     # full pipeline, 16:9 host-bg variant
+npm run video debate12 --style=style1                # rebuild video for an existing debate at 16:9
+npm run reels debate10 --style=style3                # build reels even if baseConfig defaults to style1
+tsx src/makeVideo.ts debate12 --style=style3         # works on direct invocation too
+```
+
+Both forms work because npm exposes `--style=X` as the env var `npm_config_style`, which `config.ts` also reads. If you prefer the standard npm passthrough, `npm run video debate12 -- --style=style1` works as well.
+
+Unknown style names fail fast with the list of valid keys.
 
 ### Adding a new style
 
