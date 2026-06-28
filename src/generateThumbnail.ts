@@ -47,11 +47,25 @@ export function generateThumbnail(debateName: string): void {
   const labelText = escapeInline('DEBATE');
   const hookText  = escapeInline(hook);
 
+  // Fake "glow" on the hook: stack drawtext passes with widening borders + fading alpha,
+  // then draw the solid fill on top. ffmpeg has no real blur, so this halo is the closest approximation.
+  // Tune `glowColor` and the {w, a} list to adjust intensity / spread / hue.
+  const glowColor = '0xFFFFFF'; // white
+  const haloPasses = [
+    { w: 8, a: 0.10 },
+    { w: 4, a: 0.20 },
+  ];
+  const hookBase = `fontfile=${fontfile}:text=${hookText}:fontsize=${tf.hook.size}:x=${tf.hook.x}:y=${tf.hook.y}`;
+  const hookGlow = haloPasses.map(p =>
+    `drawtext=${hookBase}:fontcolor=${glowColor}@${p.a}:borderw=${p.w}:bordercolor=${glowColor}@${p.a}`
+  );
+
   const filter = [
     `scale=${THUMB_W}:${THUMB_H}:force_original_aspect_ratio=decrease`,
     `pad=${THUMB_W}:${THUMB_H}:(ow-iw)/2:(oh-ih)/2:black`,
     `drawtext=fontfile=${fontfile}:text=${labelText}:fontcolor=${tf.label.color}:fontsize=${tf.label.size}:x=${tf.label.x}:y=${tf.label.y}`,
-    `drawtext=fontfile=${fontfile}:text=${hookText}:fontcolor=${tf.hook.color}:fontsize=${tf.hook.size}:x=${tf.hook.x}:y=${tf.hook.y}`,
+    ...hookGlow,
+    `drawtext=${hookBase}:fontcolor=${tf.hook.color}`,
   ].join(',');
 
   const outPath = `output/debates/${debateName}.thumbnail.jpg`;
