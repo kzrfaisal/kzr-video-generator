@@ -32,7 +32,11 @@ export function generateThumbnail(debateName: string): void {
     throw new Error(`Thumbnail background image not found: ${bg}`);
   }
 
-  const fontfile = path.resolve(config.font);
+  const tf = config.thumbnailFont;
+  const fontfile = path.resolve(tf.font);
+  if (!fs.existsSync(fontfile)) {
+    throw new Error(`Thumbnail font not found: ${fontfile}`);
+  }
   // ffmpeg filter values pass through two parsers (filtergraph + filter option),
   // so ':' inside text must be escaped as '\\:' to survive both layers.
   const escapeInline = (s: string) =>
@@ -46,8 +50,8 @@ export function generateThumbnail(debateName: string): void {
   const filter = [
     `scale=${THUMB_W}:${THUMB_H}:force_original_aspect_ratio=decrease`,
     `pad=${THUMB_W}:${THUMB_H}:(ow-iw)/2:(oh-ih)/2:black`,
-    `drawtext=fontfile=${fontfile}:text=${labelText}:fontcolor=yellow:fontsize=60:borderw=4:bordercolor=black:x=80:y=60`,
-    `drawtext=fontfile=${fontfile}:text=${hookText}:fontcolor=white:fontsize=80:borderw=6:bordercolor=black:x=(w-text_w)/2:y=(h-text_h)/2-80`,
+    `drawtext=fontfile=${fontfile}:text=${labelText}:fontcolor=${tf.label.color}:fontsize=${tf.label.size}:x=${tf.label.x}:y=${tf.label.y}`,
+    `drawtext=fontfile=${fontfile}:text=${hookText}:fontcolor=${tf.hook.color}:fontsize=${tf.hook.size}:x=${tf.hook.x}:y=${tf.hook.y}`,
   ].join(',');
 
   const outPath = `output/debates/${debateName}.thumbnail.jpg`;

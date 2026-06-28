@@ -74,6 +74,15 @@ export const STYLES: Record<string, SubtitleStyle> = {
   },
 };
 
+export interface ThumbnailFont {
+  /** Path to the .ttf font used for both thumbnail text elements. */
+  font: string;
+  /** Top-left "DEBATE" label styling. `x`/`y` accept raw pixels (`'80'`) or ffmpeg drawtext expressions (`'(w-text_w)/2'`, `'h-text_h-40'`). */
+  label: { size: number; color: string; x: string; y: string };
+  /** Center hook text styling (line read from `## Thumbnail Hook` in metadata). `x`/`y` accept raw pixels or ffmpeg drawtext expressions. */
+  hook: { size: number; color: string; x: string; y: string };
+}
+
 export interface Config {
   /** Auto-generate prerendered transition video clips before building the final video */
   createTransitionVideos: boolean;
@@ -119,6 +128,8 @@ export interface Config {
   generateThumbnail: boolean;
   /** Background image used for the generated YouTube thumbnail. */
   thumbnailBackground: string;
+  /** Font + per-element size/color for the thumbnail text. Separate from `font` so the subtitle font is unaffected when iterating on thumbnail styling. */
+  thumbnailFont: ThumbnailFont;
 
   /** When true, render at 9:16 reels dimensions (scale-to-fit + black padding). When false, keep the input image's native dimensions. */
   isReelStyle: boolean;
@@ -175,6 +186,14 @@ const baseConfig: Config = {
   generateMetadata: true,
   generateThumbnail: true,
   thumbnailBackground: 'assets/images/image_H.png',
+  thumbnailFont: {
+    // font: 'assets/fonts/Anton-Regular.ttf',
+    // label: { size: 45, color: '0xD3D3D3', x: '80',          y: '60' },
+    // hook:  { size: 65, color: '0x7ff217', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
+    font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
+    label: { size: 45, color: '0xD3D3D3', x: '80',          y: '60' },
+    hook:  { size: 65, color: '0xFFFFFF', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
+  },
 
   isReelStyle: false,
   videoCrf: 18,
