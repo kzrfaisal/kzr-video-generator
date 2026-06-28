@@ -4,7 +4,6 @@ import OpenAI from 'openai';
 import { ensureDir } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
-import { generateThumbnail } from './generateThumbnail';
 
 const client = new OpenAI();
 
@@ -24,15 +23,6 @@ async function generateMetadataIfEnabled(
   } catch (err: any) {
     console.warn(`Metadata generation failed (non-fatal): ${err.message}`);
     return EMPTY_METADATA;
-  }
-}
-
-function generateThumbnailIfEnabled(debateName: string): void {
-  if (!config.generateThumbnail) return;
-  try {
-    generateThumbnail(debateName);
-  } catch (err: any) {
-    console.warn(`Thumbnail generation failed (non-fatal): ${err.message}`);
   }
 }
 
@@ -77,7 +67,6 @@ export async function run(topic: string): Promise<{
   console.log(`Script saved to ${filename}`);
 
   const metadata = await generateMetadataIfEnabled(topic, content, debateName);
-  generateThumbnailIfEnabled(debateName);
 
   const usage = response.usage!;
   const scriptCost =

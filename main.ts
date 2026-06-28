@@ -3,6 +3,7 @@ import fs from 'fs';
 import { run as generateScript } from './src/generateScript';
 import { run as generateAudio } from './src/generateAudio';
 import { run as makeVideo } from './src/makeVideo';
+import { generateThumbnail } from './src/generateThumbnail';
 import { waitForEnter } from './src/utils';
 import { config } from './config';
 
@@ -19,29 +20,34 @@ function fmtCost(usd: number): string {
   return `$${usd.toFixed(6)}  (₹${(usd * USD_TO_INR).toFixed(2)})`;
 }
 
-async function main(): Promise<void> {
-  const topic = process.argv[2];
-  if (!topic) {
-    console.error('Usage: tsx main.ts "<topic>"');
-    process.exit(1);
-  }
-
+export async function run(topic: string): Promise<{ debateName: string }> {
   // 1. Script — generate the debate text via OpenAI and save to output/debates/<debateName>.txt
   //    Also produces <debateName>.metadata.md when config.generateMetadata is true.
   const scriptStart = Date.now();
   const { debateName, promptTokens, completionTokens, scriptCost, metadata } = await generateScript(topic);
   const scriptTime = Date.now() - scriptStart;
 
-  // 2. Manual review checkpoint — pause so the user can edit the script before paying for TTS
+  // 2. Manual review checkpoint — pause so the user can edit the script + metadata
+  //    (including the `## Thumbnail Hook` line) before paying for TTS or rendering the thumbnail.
   console.log(`\nUsing script: ${debateName}.txt`);
-  await waitForEnter(`\nReview the script before continuing:\noutput/debates/${debateName}.txt\n\nPress ENTER when ready to generate video...`);
+  await waitForEnter(`\nReview before continuing:\n  output/debates/${debateName}.txt\n  output/debates/${debateName}.metadata.md  (edit '## Thumbnail Hook' here to change the thumbnail text)\n\nPress ENTER when ready to generate video...`);
 
-  // 3. Audio — per-line OpenAI TTS into output/audios/<debateName>/NNN_<speaker>.mp3
+  // 3. Thumbnail — render JPG using the (possibly edited) hook from metadata.md.
+  //    Non-fatal: if config.generateThumbnail is off or rendering fails, the run continues.
+  if (config.generateThumbnail) {
+    try {
+      generateThumbnail(debateName);
+    } catch (err: any) {
+      console.warn(`Thumbnail generation failed (non-fatal): ${err.message}`);
+    }
+  }
+
+  // 4. Audio — per-line OpenAI TTS into output/audios/<debateName>/NNN_<speaker>.mp3
   const audioStart = Date.now();
   const { characters, audioCost } = await generateAudio(debateName);
   const audioTime = Date.now() - audioStart;
 
-  // 4. Video — segments per line, optional prerendered transitions, final concat (see src/makeVideo.ts)
+  // 5. Video — segments per line, optional prerendered transitions, final concat (see src/makeVideo.ts)
   const videoStart = Date.now();
   makeVideo(debateName);
   const videoTime = Date.now() - videoStart;
@@ -107,6 +113,15 @@ async function main(): Promise<void> {
     totalTimeMs: totalTime,
   };
   fs.appendFileSync('output/cost_log.jsonl', JSON.stringify(logEntry) + '\n', 'utf-8');
+
+  return { debateName };
 }
 
-main().catch(err => { console.error(err.message); process.exit(1); });
+if (require.main === module) {
+  const topic = process.argv[2];
+  if (!topic) {
+    console.error('Usage: tsx main.ts "<topic>"');
+    process.exit(1);
+  }
+  run(topic).catch(err => { console.error(err.message); process.exit(1); });
+}

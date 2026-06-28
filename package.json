@@ -5,6 +5,7 @@
   "main": "main.ts",
   "scripts": {
     "start": "tsx main.ts",
+    "all": "tsx src/runAll.ts",
     "script": "tsx src/generateScript.ts",
     "thumbnail": "tsx src/generateThumbnail.ts",
     "audio": "tsx src/generateAudio.ts",

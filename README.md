@@ -328,19 +328,24 @@ All commands accept `--style=<name>` to override `baseConfig.videoStyle` for tha
 ```bash
 npm start "AI replacing teachers"
 ```
-Full pipeline: generates the debate script, pauses for review, runs TTS, builds the final video.
+Full pipeline: generates the debate script + metadata, pauses for review (edit the script or the `## Thumbnail Hook` line in `debateN.metadata.md`), renders the thumbnail, runs TTS, builds the final video.
 
 ```bash
 npm run reels debate10
 ```
 Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No extra TTS cost.
 
+```bash
+npm run all "AI replacing teachers"
+```
+End-to-end YouTube + reels in one command: runs the full `npm start` pipeline, then spawns the reels pipeline (with `--style=style3`) reusing the same audio. Two ENTER review prompts — one before TTS, one before reel-video build.
+
 ### Individual stages
 
 ```bash
 npm run script "AI replacing teachers"
 ```
-Generates the debate script (`output/debates/debateN.txt`), and when `generateMetadata: true` (default) also the publishing metadata file (`debateN.metadata.md`) and a 1280×720 YouTube thumbnail (`debateN.thumbnail.jpg`, when `generateThumbnail: true`). Costs script-model tokens (script + one extra small call for metadata); the thumbnail is ffmpeg-only, no extra OpenAI cost.
+Generates the debate script (`output/debates/debateN.txt`), and when `generateMetadata: true` (default) also the publishing metadata file (`debateN.metadata.md`). Costs script-model tokens (script + one extra small call for metadata). Does **not** render the thumbnail — that happens in the full `npm start` flow after the review pause (so hook edits take effect), or on demand via `npm run thumbnail debateN`.
 
 ```bash
 npm run thumbnail debate1
