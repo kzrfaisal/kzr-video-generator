@@ -191,7 +191,7 @@ const baseConfig: Config = {
     // label: { size: 45, color: '0xD3D3D3', x: '80',          y: '60' },
     // hook:  { size: 65, color: '0x7ff217', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
     font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
-    label: { size: 45, color: '0xD3D3D3', x: '80',          y: '60' },
+    label: { size: 40, color: '0xD3D3D3', x: '80',          y: '60' },
     hook:  { size: 65, color: '0xFFFFFF', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
   },
 
