@@ -63,7 +63,16 @@ export async function run(debateName: string): Promise<void> {
 }
 
 if (require.main === module) {
-  const debateName = process.argv[2];
+  // Pick the first positional arg, skipping --flag=... and any value after a bare --style.
+  const args = process.argv.slice(2);
+  let debateName: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--style') { i++; continue; }
+    if (a.startsWith('--')) continue;
+    debateName = a;
+    break;
+  }
   if (!debateName) {
     console.error('Usage: tsx src/makeReels.ts <debate_name>');
     process.exit(1);

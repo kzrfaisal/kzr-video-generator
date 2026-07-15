@@ -121,7 +121,7 @@ Any CLI entry point reads `--style=<name>` (or env `npm_config_style`) at startu
 ```bash
 npm start "AI replacing teachers" --style=style2     # full pipeline, 16:9 host-bg variant
 npm run video debate12 --style=style1                # rebuild video for an existing debate at 16:9
-npm run reels debate10 --style=style3                # build reels even if baseConfig defaults to style1
+npm run reels debate10                               # reels script bakes in --style=style3, so no flag needed
 tsx src/makeVideo.ts debate12 --style=style3         # works on direct invocation too
 ```
 
@@ -333,7 +333,7 @@ Full pipeline: generates the debate script + metadata, pauses for review (edit t
 ```bash
 npm run reels debate10
 ```
-Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No extra TTS cost.
+Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No extra TTS cost. The script hardcodes `--style=style3` so reels always render 9:16 into `output/videos/reels/` regardless of what `baseConfig.videoStyle` is set to.
 
 ```bash
 npm run all "AI replacing teachers"

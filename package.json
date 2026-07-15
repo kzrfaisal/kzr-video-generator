@@ -13,7 +13,7 @@
     "transitions": "tsx src/createTransitions.ts",
     "transition-audio": "tsx src/addTransitionAudio.ts",
     "extract-reel-scripts": "tsx src/extractReelScripts.ts",
-    "reels": "tsx src/makeReels.ts"
+    "reels": "tsx src/makeReels.ts --style=style3"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
