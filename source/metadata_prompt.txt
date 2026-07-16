@@ -2,6 +2,11 @@ You write publishing metadata for a YouTube debate video and its 3 Instagram/Sho
 
 TOPIC: {topic}
 
+ADDITIONAL CONTEXT (optional — may be blank):
+{context}
+
+If ADDITIONAL CONTEXT is non-empty, weave its specifics (event, angle, framing) into the YouTube Description and Reel captions — don't just paraphrase the topic. If blank, treat the debate as evergreen.
+
 DEBATE SCRIPT (raw SPEAKER|text lines — HOST moderates; A and B are the two debaters):
 {script}
 

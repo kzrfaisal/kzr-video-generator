@@ -1,15 +1,18 @@
 import { spawnSync } from 'child_process';
 import { run as runMain } from '../main';
+import { parseContextFlag } from './utils';
 
 async function main(): Promise<void> {
   const topic = process.argv[2];
   if (!topic) {
-    console.error('Usage: tsx src/runAll.ts "<topic>"');
+    console.error('Usage: tsx src/runAll.ts "<topic>" [--context="<framing>"]');
     process.exit(1);
   }
+  const context = parseContextFlag() ?? '';
 
   // 1. YouTube pipeline: script + metadata + thumbnail + audio + final video.
-  const { debateName } = await runMain(topic);
+  //    Reels don't need `context` — they reuse this audio, no fresh LLM call.
+  const { debateName } = await runMain(topic, context);
 
   // 2. Reels pipeline: spawned as a subprocess so it loads its own config with style3
   //    (different images + portrait dimensions). Reuses the audio just generated.

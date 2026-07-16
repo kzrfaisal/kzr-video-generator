@@ -2,6 +2,11 @@ You are writing a punchy short-form video script for Instagram Reels / YouTube S
 
 TOPIC: {topic}
 
+ADDITIONAL CONTEXT (optional — may be blank):
+{context}
+
+If ADDITIONAL CONTEXT is non-empty, use it to sharpen HOST's hook and both takes (they should engage with that specific angle, not a generic version of the topic). If blank, invent a reasonable angle.
+
 VIDEO LENGTH TARGET: about {videoLength}.
 
 FORMAT RULES:

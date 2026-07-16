@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import fs from 'fs';
 import OpenAI from 'openai';
-import { ensureDir } from './utils';
+import { ensureDir, parseContextFlag } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
 
@@ -14,19 +14,20 @@ const EMPTY_METADATA: MetadataResult = { promptTokens: 0, completionTokens: 0, c
 
 async function generateMetadataIfEnabled(
   topic: string,
+  context: string,
   scriptContent: string,
   debateName: string,
 ): Promise<MetadataResult> {
   if (!config.generateMetadata) return EMPTY_METADATA;
   try {
-    return await generateMetadata(topic, scriptContent, debateName);
+    return await generateMetadata(topic, context, scriptContent, debateName);
   } catch (err: any) {
     console.warn(`Metadata generation failed (non-fatal): ${err.message}`);
     return EMPTY_METADATA;
   }
 }
 
-export async function run(topic: string): Promise<{
+export async function run(topic: string, context: string = ''): Promise<{
   debateName: string;
   promptTokens: number;
   completionTokens: number;
@@ -38,6 +39,7 @@ export async function run(topic: string): Promise<{
   const promptTemplate = fs.readFileSync(config.promptFile, 'utf-8');
   const prompt = promptTemplate
     .replace('{topic}', topic)
+    .replace('{context}', context)
     .replace('{videoLength}', config.videoLengthTarget);
 
   const response = await client.chat.completions.create({
@@ -66,7 +68,7 @@ export async function run(topic: string): Promise<{
   fs.writeFileSync(filename, content, 'utf-8');
   console.log(`Script saved to ${filename}`);
 
-  const metadata = await generateMetadataIfEnabled(topic, content, debateName);
+  const metadata = await generateMetadataIfEnabled(topic, context, content, debateName);
 
   const usage = response.usage!;
   const scriptCost =
@@ -79,10 +81,11 @@ export async function run(topic: string): Promise<{
 if (require.main === module) {
   const topic = process.argv[2];
   if (!topic) {
-    console.error('Usage: tsx src/generateScript.ts <topic>');
+    console.error('Usage: tsx src/generateScript.ts <topic> [--context="<framing>"]');
     process.exit(1);
   }
-  run(topic).then(({ debateName, promptTokens, completionTokens, scriptCost, metadata }) => {
+  const context = parseContextFlag() ?? '';
+  run(topic, context).then(({ debateName, promptTokens, completionTokens, scriptCost, metadata }) => {
     console.log(`[${debateName}] Script cost: input ${promptTokens} tokens, output ${completionTokens} tokens, $${scriptCost.toFixed(6)}`);
     if (metadata.cost > 0) {
       console.log(`[${debateName}] Metadata cost: input ${metadata.promptTokens} tokens, output ${metadata.completionTokens} tokens, $${metadata.cost.toFixed(6)}`);

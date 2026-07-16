@@ -2,6 +2,11 @@ You are writing a short YouTube debate script.
 
 TOPIC: {topic}
 
+ADDITIONAL CONTEXT (optional — may be blank):
+{context}
+
+If ADDITIONAL CONTEXT is non-empty, use it to shape HOST's opening framing (reference the specific event/angle described), the debaters' arguments (they should engage with that specific angle, not a generic version of the topic), and the concrete examples they cite. If ADDITIONAL CONTEXT is blank, invent a reasonable angle and treat the debate as evergreen.
+
 VIDEO LENGTH TARGET: about {videoLength}.
 
 FORMAT RULES:

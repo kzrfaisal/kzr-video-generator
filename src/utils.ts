@@ -10,6 +10,22 @@ export function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+/**
+ * Read `--context=<text>` (or `--context <text>`) from CLI args / npm env var,
+ * so any entry point can pass extra framing/angle without editing prompts.
+ * Same pattern as parseStyleFlag in config.ts.
+ */
+export function parseContextFlag(): string | undefined {
+  if (process.env.npm_config_context) return process.env.npm_config_context;
+  const args = process.argv;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--context' && args[i + 1]) return args[i + 1];
+    const m = args[i].match(/^--context=(.+)$/);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
 export function cleanTmp(): void {
   fs.rmSync('tmp', { recursive: true, force: true });
   fs.mkdirSync('tmp');

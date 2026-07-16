@@ -18,12 +18,14 @@ export interface MetadataResult {
 
 export async function generateMetadata(
   topic: string,
+  context: string,
   scriptContent: string,
   debateName: string,
 ): Promise<MetadataResult> {
   const promptTemplate = fs.readFileSync(METADATA_PROMPT_FILE, 'utf-8');
   const prompt = promptTemplate
     .replace('{topic}', topic)
+    .replace('{context}', context)
     .replace('{script}', scriptContent);
 
   const response = await client.chat.completions.create({

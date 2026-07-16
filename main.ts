@@ -4,7 +4,7 @@ import { run as generateScript } from './src/generateScript';
 import { run as generateAudio } from './src/generateAudio';
 import { run as makeVideo } from './src/makeVideo';
 import { generateThumbnail } from './src/generateThumbnail';
-import { waitForEnter } from './src/utils';
+import { waitForEnter, parseContextFlag } from './src/utils';
 import { config } from './config';
 
 const USD_TO_INR = 84;
@@ -20,11 +20,11 @@ function fmtCost(usd: number): string {
   return `$${usd.toFixed(6)}  (₹${(usd * USD_TO_INR).toFixed(2)})`;
 }
 
-export async function run(topic: string): Promise<{ debateName: string }> {
+export async function run(topic: string, context: string = ''): Promise<{ debateName: string }> {
   // 1. Script — generate the debate text via OpenAI and save to output/debates/<debateName>.txt
   //    Also produces <debateName>.metadata.md when config.generateMetadata is true.
   const scriptStart = Date.now();
-  const { debateName, promptTokens, completionTokens, scriptCost, metadata } = await generateScript(topic);
+  const { debateName, promptTokens, completionTokens, scriptCost, metadata } = await generateScript(topic, context);
   const scriptTime = Date.now() - scriptStart;
 
   // 2. Manual review checkpoint — pause so the user can edit the script + metadata
@@ -120,8 +120,9 @@ export async function run(topic: string): Promise<{ debateName: string }> {
 if (require.main === module) {
   const topic = process.argv[2];
   if (!topic) {
-    console.error('Usage: tsx main.ts "<topic>"');
+    console.error('Usage: tsx main.ts "<topic>" [--context="<framing>"]');
     process.exit(1);
   }
-  run(topic).catch(err => { console.error(err.message); process.exit(1); });
+  const context = parseContextFlag() ?? '';
+  run(topic, context).catch(err => { console.error(err.message); process.exit(1); });
 }

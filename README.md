@@ -330,6 +330,15 @@ npm start "AI replacing teachers"
 ```
 Full pipeline: generates the debate script + metadata, pauses for review (edit the script or the `## Thumbnail Hook` line in `debateN.metadata.md`), renders the thumbnail, runs TTS, builds the final video.
 
+**Optional framing with `--context`:** pass a `--context="..."` string to steer the debate's angle, cite a real event, or force a specific framing. Flows into the debate prompt (so HOST + debaters engage with the specific angle instead of an invented generic one) and the metadata prompt (so the YouTube Description references those specifics too). Supported on `npm start`, `npm run all`, and `npm run script`.
+
+```bash
+npm start "AI replacing teachers" \
+  --context="LA Unified just banned ChatGPT from classrooms this month. Frame the debate around whether AI is a teacher-replacement threat or a pedagogy upgrade, and reference the LA ban as the trigger."
+```
+
+For multi-line or shell-heavy context, put it in a file and pass `--context="$(cat framing.txt)"`.
+
 ```bash
 npm run reels debate10
 ```
@@ -344,8 +353,9 @@ End-to-end YouTube + reels in one command: runs the full `npm start` pipeline, t
 
 ```bash
 npm run script "AI replacing teachers"
+npm run script "AI replacing teachers" --context="LA Unified just banned ChatGPT this month..."
 ```
-Generates the debate script (`output/debates/debateN.txt`), and when `generateMetadata: true` (default) also the publishing metadata file (`debateN.metadata.md`). Costs script-model tokens (script + one extra small call for metadata). Does **not** render the thumbnail — that happens in the full `npm start` flow after the review pause (so hook edits take effect), or on demand via `npm run thumbnail debateN`.
+Generates the debate script (`output/debates/debateN.txt`), and when `generateMetadata: true` (default) also the publishing metadata file (`debateN.metadata.md`). Accepts an optional `--context="..."` to steer the framing (see the `npm start` section for details). Costs script-model tokens (script + one extra small call for metadata). Does **not** render the thumbnail — that happens in the full `npm start` flow after the review pause (so hook edits take effect), or on demand via `npm run thumbnail debateN`.
 
 ```bash
 npm run thumbnail debate1
