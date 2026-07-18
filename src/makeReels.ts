@@ -3,8 +3,9 @@ import path from 'path';
 import { ensureDir, waitForEnter } from './utils';
 import { extract, ExtractedPart } from './extractReelScripts';
 import { run as makeVideo } from './makeVideo';
+import { ensureOutroAudio } from './reelOutro';
 
-function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart): string {
+function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, outroMp3: string): string {
   const destDir = `output/audios/reels/${part.name}`;
   ensureDir(destDir);
 
@@ -25,6 +26,12 @@ function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart):
     const destFile = `${String(newIdx + 1).padStart(3, '0')}_${speaker}.mp3`;
     fs.copyFileSync(path.join(srcDir, srcFile), path.join(destDir, destFile));
   });
+
+  // Append the cached HOST outro as the next-numbered file so it pairs with the
+  // extra `HOST|<outro>` line appended by extractReelScripts.
+  const outroIdx = part.origLineIndices.length + 1;
+  const outroDest = path.join(destDir, `${String(outroIdx).padStart(3, '0')}_HOST.mp3`);
+  fs.copyFileSync(outroMp3, outroDest);
 
   return destDir;
 }
@@ -51,9 +58,11 @@ export async function run(debateName: string): Promise<void> {
     `\n\nPress ENTER when ready to build the reel videos...`
   );
 
-  for (const part of parts) {
-    console.log(`\nCopying audio for ${part.name} (${part.origLineIndices.length} lines)...`);
-    copyPartAudio(srcAudioDir, srcFiles, part);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const outroMp3 = await ensureOutroAudio(i as 0 | 1 | 2);
+    console.log(`\nCopying audio for ${part.name} (${part.origLineIndices.length} lines + outro)...`);
+    copyPartAudio(srcAudioDir, srcFiles, part, outroMp3);
 
     console.log(`\nBuilding video for ${part.name}...`);
     makeVideo(`reels/${part.name}`);

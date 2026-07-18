@@ -71,7 +71,7 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 | `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate (and the metadata file). |
 | `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
 | `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
-| `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions) via one extra `scriptModel` call. Set to `false` to skip — only the script `.txt` is written and no extra call is made. |
+| `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions). Hashtags are lowercase and grounded in a web search (via `gpt-4o-mini-search-preview`) for popularity; reel captions are prefixed with `Part N - <YouTube title>`. Costs the extra small search call plus one `scriptModel` call. Set to `false` to skip. |
 | `generateThumbnail` | `true` | When `true`, the script stage also renders a 1280×720 `debateN.thumbnail.jpg` using `thumbnailBackground` + the `## Thumbnail Hook` line from the metadata file. Requires `generateMetadata: true`. No extra OpenAI call. |
 | `thumbnailBackground` | `'assets/images/image_H.png'` | Background image overlaid with the `DEBATE` label + center hook text by ffmpeg `drawtext`. Any 16:9 image works; non-16:9 is letterboxed with black bars. |
 | `thumbnailFont` | `{ font, label: { size, color, x, y }, hook: { size, color, x, y } }` | Object holding the thumbnail's `.ttf` font plus per-element `size`, `color`, `x`, `y` for the `label` and the `hook`. `color` accepts named colors (`white`, `gold`), hex (`0xFF6B35`), or `name@alpha`. `x`/`y` accept raw pixels (`'80'`) **or** ffmpeg drawtext expressions: `w`/`h` = canvas size (1280/720), `text_w`/`text_h` = rendered text size — so `(w-text_w)/2` centers horizontally and `(h-text_h)/2-80` centers vertically then shifts up 80px. Kept separate from `font` so subtitle styling is unaffected. Heavy/display faces (Anton, Bebas Neue, Impact, Montserrat Black) work best at thumbnail scale. |
@@ -342,7 +342,7 @@ For multi-line or shell-heavy context, put it in a file and pass `--context="$(c
 ```bash
 npm run reels debate10
 ```
-Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No extra TTS cost. The script hardcodes `--style=style3` so reels always render 9:16 into `output/videos/reels/` regardless of what `baseConfig.videoStyle` is set to.
+Reuses an existing long-form debate's audio to build three reel videos (opening, rebuttals, closing). No per-reel TTS cost for the debate lines. The script hardcodes `--style=style3` so reels always render 9:16 into `output/videos/reels/` regardless of what `baseConfig.videoStyle` is set to. Each reel ends with a distinct HOST outro line asking viewers to comment; audio for each of the three outros is generated once via OpenAI TTS on first run and cached at `assets/audios/reels/host_outro_partN.mp3` — reused across every subsequent debate.
 
 ```bash
 npm run all "AI replacing teachers"

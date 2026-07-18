@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { ensureDir, parseDebateFile, DebateLine } from './utils';
+import { HOST_OUTRO_TEXT } from './reelOutro';
 
 type Block = { speaker: string; texts: string[]; origIndices: number[] };
 
@@ -74,9 +75,12 @@ export function extract(debateName: string): ExtractedPart[] {
   const reelsDir = 'output/debates/reels';
   ensureDir(reelsDir);
 
-  const parts: ExtractedPart[] = partSpecs.map(([name, partBlocks]) => {
+  const parts: ExtractedPart[] = partSpecs.map(([name, partBlocks], partIndex) => {
     const filePath = `${reelsDir}/${name}.txt`;
-    fs.writeFileSync(filePath, blocksToScript(partBlocks), 'utf-8');
+    // Append a HOST outro line so each reel ends with an engagement prompt.
+    // Its audio is supplied separately by ensureOutroAudio(partIndex) at reel-build time.
+    const script = blocksToScript(partBlocks) + `HOST|${HOST_OUTRO_TEXT[partIndex as 0 | 1 | 2]}\n`;
+    fs.writeFileSync(filePath, script, 'utf-8');
     console.log(`Wrote: ${filePath}`);
     const origLineIndices = partBlocks.flatMap(b => b.origIndices);
     return { name, filePath, origLineIndices };
