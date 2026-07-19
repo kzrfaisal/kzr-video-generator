@@ -22,6 +22,33 @@ function resolveStyleAndImage(speaker: string): { styleName: string; image: stri
   };
 }
 
+/** Read the `## YouTube Title` line from a debate's metadata file, or null if unavailable. */
+function readYoutubeTitle(baseDebate: string): string | null {
+  const mdPath = `output/debates/${baseDebate}.metadata.md`;
+  if (!fs.existsSync(mdPath)) return null;
+  const md = fs.readFileSync(mdPath, 'utf-8');
+  const match = md.match(/^##\s+YouTube Title\s*\n([\s\S]*?)(?=\n##\s|$)/m);
+  if (!match) return null;
+  return match[1].trim().split('\n')[0].trim() || null;
+}
+
+/**
+ * Build the reel banner text "Part N - <YouTube Title>" for a reel-part debate name
+ * (e.g. "reels/debate10_part1"). Returns '' when this isn't a reel part or the
+ * metadata title is unavailable (banner is silently skipped).
+ */
+function reelPartBanner(debateName: string): string {
+  if (!config.isReelStyle) return '';
+  // debateName is like "reels/debate21_part1" — strip the dir, then split base + part.
+  const base = debateName.split('/').pop() ?? debateName;
+  const m = base.match(/^(.+)_part(\d+)$/);
+  if (!m) return '';
+  const [, baseDebate, partNum] = m;
+  const title = readYoutubeTitle(baseDebate);
+  if (!title) return '';
+  return `Part ${partNum} - ${title}`;
+}
+
 function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle, startPadSec: number): string {
   const opts: string[] = [
     `fontfile=${path.resolve(style.font ?? config.font)}`,
@@ -64,6 +91,7 @@ function createSegment(
   styleName: string,
   startPadSec: number,
   endPadSec: number,
+  bannerText: string,
 ): void {
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
@@ -94,6 +122,28 @@ function createSegment(
     allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style, startPadSec));
   });
 
+  // Persistent "Part N - <title>" banner, vertically centered, drawn on every frame.
+  // Matches the thumbnail hook: soft glow halo (stacked passes) under a solid fill.
+  const bannerFiles: string[] = [];
+  if (bannerText) {
+    const b = config.bannerFont;
+    const bannerLines = wrapText(bannerText, b.wrapWidth);
+    const n = bannerLines.length;
+    const fontfile = path.resolve(b.font);
+    bannerLines.forEach((line, i) => {
+      const filePath = path.resolve(`${outputBase}_banner${i}.txt`);
+      fs.writeFileSync(filePath, line, 'utf-8');
+      bannerFiles.push(filePath);
+      const y = `(h-${n * b.lineHeight})/2+${i * b.lineHeight}`;
+      const base = `fontfile=${fontfile}:textfile=${filePath}:fontsize=${b.size}:x=(w-text_w)/2:y=${y}`;
+      // Glow passes first (widest/faintest first), then the fill on top.
+      for (const p of b.glow?.passes ?? []) {
+        allFilters.push(`drawtext=${base}:fontcolor=${b.glow!.color}@${p.a}:borderw=${p.w}:bordercolor=${b.glow!.color}@${p.a}`);
+      }
+      allFilters.push(`drawtext=${base}:fontcolor=${b.color}`);
+    });
+  }
+
   // PCM audio in .mkv → sample-accurate durations, so the xfade chain in buildVideo
   // doesn't accumulate AAC frame-quantization drift across segments.
   const isFadePcm = config.transitionStyle === 'fade-pcm';
@@ -115,7 +165,7 @@ function createSegment(
   ];
 
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });
-  textFiles.forEach((f: string) => { try { fs.unlinkSync(f); } catch {} });
+  [...textFiles, ...bannerFiles].forEach((f: string) => { try { fs.unlinkSync(f); } catch {} });
   if (result.status !== 0) throw new Error(`ffmpeg failed for segment: ${outputPath}`);
 }
 
@@ -135,6 +185,7 @@ export function run(debateName: string): void {
   if (files.length === 0) throw new Error(`No audio files found in ${audioDir}`);
 
   const lines = parseDebateFile(`output/debates/${debateName}.txt`);
+  const bannerText = reelPartBanner(debateName);
 
   const speakerOf = (f: string) => f.split('_')[1].split('.')[0];
   const fadeEnabled = config.transitionStyle === 'fade' || config.transitionStyle === 'fade-pcm';
@@ -159,7 +210,7 @@ export function run(debateName: string): void {
     const text = lines[idx].text;
 
     console.log(`Creating segment for ${file}`);
-    createSegment(image, audioPath, text, segmentPath, styleName, startPadSec, endPadSec);
+    createSegment(image, audioPath, text, segmentPath, styleName, startPadSec, endPadSec, bannerText);
   });
 }
 

@@ -83,6 +83,22 @@ export interface ThumbnailFont {
   hook: { size: number; color: string; x: string; y: string };
 }
 
+/** Styling for the persistent "Part N - <title>" banner shown vertically centered on reel videos. Mirrors the thumbnail hook look (font + fill + soft glow). */
+export interface BannerFont {
+  /** Path to the .ttf font. ffmpeg has no bold flag — pick a bold/heavy face (e.g. Anton, Bebas Neue, UbuntuMono-Bold) to make it bold. */
+  font: string;
+  /** Font size in pixels. */
+  size: number;
+  /** Fill color: named (`white`), hex (`0xFFFFFF`), or `name@alpha`. */
+  color: string;
+  /** Max characters per line before wrapping. */
+  wrapWidth: number;
+  /** Vertical pixel gap between wrapped banner lines. */
+  lineHeight: number;
+  /** Soft glow halo behind the fill — same technique as the thumbnail hook (stacked drawtext passes). Omit for no glow. `passes` = list of `{ w: border width px, a: alpha 0-1 }`, widest/faintest first. */
+  glow?: { color: string; passes: { w: number; a: number }[] };
+}
+
 export interface Config {
   /** Auto-generate prerendered transition video clips before building the final video */
   createTransitionVideos: boolean;
@@ -130,6 +146,8 @@ export interface Config {
   thumbnailBackground: string;
   /** Font + per-element size/color for the thumbnail text. Separate from `font` so the subtitle font is unaffected when iterating on thumbnail styling. */
   thumbnailFont: ThumbnailFont;
+  /** Styling for the persistent "Part N - <title>" reel banner. Separate from `font` so it can look distinct from the subtitles. */
+  bannerFont: BannerFont;
 
   /** When true, render at 9:16 reels dimensions (scale-to-fit + black padding). When false, keep the input image's native dimensions. */
   isReelStyle: boolean;
@@ -193,6 +211,14 @@ const baseConfig: Config = {
     font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
     label: { size: 40, color: '0xD3D3D3', x: '80',          y: '60' },
     hook:  { size: 65, color: '0xFFFFFF', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
+  },
+  bannerFont: {
+    font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
+    size: 52,
+    color: '0xFFFFFF',
+    wrapWidth: 24,
+    lineHeight: 64,
+    glow: { color: '0xFFFFFF', passes: [{ w: 8, a: 0.10 }, { w: 4, a: 0.20 }] },
   },
 
   isReelStyle: false,
