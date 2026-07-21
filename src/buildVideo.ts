@@ -3,6 +3,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { ensureDir, formatTimestamp, cleanTmp } from './utils';
 import { config } from '../config';
+import { publishDir } from './paths';
 
 const TRANSITIONS: Record<string, string> = {
   'HOST,A': 'assets/videos/transition_H_to_A.mp4',
@@ -135,7 +136,7 @@ export function run(debateName: string): void {
   const concatDir = 'tmp/concat';
   const baseName = path.basename(debateName);
   const concatFile = `${concatDir}/${baseName}_segments.txt`;
-  const outputDir = `output/videos/${config.isReelStyle ? 'reels' : 'others'}`;
+  const outputDir = publishDir(debateName);
   const outputFile = `${outputDir}/${baseName}_${formatTimestamp()}.mp4`;
 
   ensureDir(concatDir);

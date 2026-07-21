@@ -3,6 +3,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { ensureDir, wrapText, parseDebateFile } from './utils';
 import { config, STYLES, SubtitleStyle } from '../config';
+import { publishMetadata } from './paths';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -24,7 +25,7 @@ function resolveStyleAndImage(speaker: string): { styleName: string; image: stri
 
 /** Read the `## YouTube Title` line from a debate's metadata file, or null if unavailable. */
 function readYoutubeTitle(baseDebate: string): string | null {
-  const mdPath = `output/debates/${baseDebate}.metadata.md`;
+  const mdPath = publishMetadata(baseDebate);
   if (!fs.existsSync(mdPath)) return null;
   const md = fs.readFileSync(mdPath, 'utf-8');
   const match = md.match(/^##\s+YouTube Title\s*\n([\s\S]*?)(?=\n##\s|$)/m);

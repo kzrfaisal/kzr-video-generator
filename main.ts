@@ -30,7 +30,7 @@ export async function run(topic: string, context: string = ''): Promise<{ debate
   // 2. Manual review checkpoint — pause so the user can edit the script + metadata
   //    (including the `## Thumbnail Hook` line) before paying for TTS or rendering the thumbnail.
   console.log(`\nUsing script: ${debateName}.txt`);
-  await waitForEnter(`\nReview before continuing:\n  output/debates/${debateName}.txt\n  output/debates/${debateName}.metadata.md  (edit '## Thumbnail Hook' here to change the thumbnail text)\n\nPress ENTER when ready to generate video...`);
+  await waitForEnter(`\nReview before continuing:\n  output/debates/${debateName}.txt\n  output/publish/${debateName}/${debateName}.metadata.md  (edit '## Thumbnail Hook' here to change the thumbnail text)\n\nPress ENTER when ready to generate video...`);
 
   // 3. Thumbnail — render JPG using the (possibly edited) hook from metadata.md.
   //    Non-fatal: if config.generateThumbnail is off or rendering fails, the run continues.

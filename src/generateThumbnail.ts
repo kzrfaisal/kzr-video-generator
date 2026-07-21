@@ -2,12 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { config } from '../config';
+import { ensureDir } from './utils';
+import { publishDir, publishMetadata, publishThumbnail } from './paths';
 
 const THUMB_W = 1280;
 const THUMB_H = 720;
 
 function readHookFromMetadata(debateName: string): string {
-  const mdPath = `output/debates/${debateName}.metadata.md`;
+  const mdPath = publishMetadata(debateName);
   if (!fs.existsSync(mdPath)) {
     throw new Error(`Metadata file not found: ${mdPath}. Thumbnail needs the '## Thumbnail Hook' section.`);
   }
@@ -68,7 +70,8 @@ export function generateThumbnail(debateName: string): void {
     `drawtext=${hookBase}:fontcolor=${tf.hook.color}`,
   ].join(',');
 
-  const outPath = `output/debates/${debateName}.thumbnail.jpg`;
+  ensureDir(publishDir(debateName));
+  const outPath = publishThumbnail(debateName);
   const args = ['-y', '-i', bg, '-vf', filter, '-frames:v', '1', '-update', '1', outPath];
 
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });

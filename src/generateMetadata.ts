@@ -2,6 +2,8 @@ import 'dotenv/config';
 import fs from 'fs';
 import OpenAI from 'openai';
 import { config } from '../config';
+import { ensureDir } from './utils';
+import { publishDir, publishMetadata } from './paths';
 
 const client = new OpenAI();
 
@@ -93,7 +95,8 @@ export async function generateMetadata(
   // Safety net: force every #hashtag in the generated markdown to lowercase.
   const lowered = content.replace(/#[A-Za-z0-9_]+/g, m => m.toLowerCase());
 
-  const outFile = `output/debates/${debateName}.metadata.md`;
+  ensureDir(publishDir(debateName));
+  const outFile = publishMetadata(debateName);
   fs.writeFileSync(outFile, lowered, 'utf-8');
   console.log(`Metadata saved to ${outFile}`);
 
