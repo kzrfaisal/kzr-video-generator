@@ -4,6 +4,9 @@
   "description": "Debate video generator",
   "main": "main.ts",
   "scripts": {
+    "next:dev": "next dev",
+    "next:build": "next build",
+    "next:start": "next start",
     "start": "tsx main.ts",
     "all": "tsx src/runAll.ts",
     "script": "tsx src/generateScript.ts",
@@ -17,10 +20,15 @@
   },
   "dependencies": {
     "dotenv": "^16.5.0",
-    "openai": "^4.97.0"
+    "next": "^16.2.11",
+    "openai": "^4.97.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
