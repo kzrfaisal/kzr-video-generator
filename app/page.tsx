@@ -8,6 +8,7 @@ const STAGES = [
   { key: 'thumbnail', label: 'Thumbnail' },
   { key: 'audio', label: 'Audio' },
   { key: 'video', label: 'Video' },
+  { key: 'reels', label: 'Reels' },
 ] as const;
 
 // Shape returned by GET /api/run/[id] (see lib/runs.ts → publicView).
@@ -19,6 +20,7 @@ interface RunView {
   debateName?: string;
   error?: string;
   hasVideo: boolean;
+  reelCount: number;
 }
 
 export default function Home() {
@@ -99,7 +101,7 @@ export default function Home() {
         />
 
         <label htmlFor="context">
-          Context <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span>
+          Context <span className="optional">(optional)</span>
         </label>
         <textarea
           id="context"
@@ -135,11 +137,27 @@ export default function Home() {
               <div className="result-actions">
                 <a href={`/api/run/${run.id}/video`} download>Download video</a>
                 {run.debateName && (
-                  <span style={{ color: 'var(--muted)' }}>
+                  <span className="saved-path">
                     Saved to output/publish/{run.debateName}/
                   </span>
                 )}
               </div>
+
+              {run.reelCount > 0 && (
+                <>
+                  <h3 style={{ margin: '28px 0 4px' }}>Reels</h3>
+                  <div className="reels">
+                    {Array.from({ length: run.reelCount }).map((_, n) => (
+                      <div className="reel" key={n}>
+                        <video controls src={`/api/run/${run.id}/video?reel=${n}`} />
+                        <a href={`/api/run/${run.id}/video?reel=${n}`} download>
+                          Part {n + 1}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
 

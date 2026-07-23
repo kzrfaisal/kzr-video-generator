@@ -52,6 +52,8 @@ textarea { resize: vertical; min-height: 72px; }
 input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+.optional { font-weight: 400; color: var(--muted); }
+.saved-path { color: var(--muted); }
 
 button {
   margin-top: 20px;
@@ -107,6 +109,12 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 video { width: 100%; border-radius: 10px; margin-top: 20px; background: #000; }
+
+/* Reels: portrait 9:16, shown in a row */
+.reels { display: flex; gap: 12px; flex-wrap: wrap; }
+.reel { flex: 1; min-width: 140px; max-width: 200px; text-align: center; }
+.reel video { margin-top: 8px; aspect-ratio: 9 / 16; object-fit: cover; }
+.reel a { display: inline-block; margin-top: 6px; color: var(--accent); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
 
 .result-actions { display: flex; gap: 12px; margin-top: 14px; }
 .result-actions a {

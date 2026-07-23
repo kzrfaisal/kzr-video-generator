@@ -8,7 +8,7 @@
 import type { ChildProcess } from 'child_process';
 
 export type RunStatus = 'running' | 'done' | 'error';
-export type Stage = 'starting' | 'script' | 'thumbnail' | 'audio' | 'video' | 'done';
+export type Stage = 'starting' | 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'done';
 
 export interface RunState {
   id: string;
@@ -17,8 +17,9 @@ export interface RunState {
   stage: Stage;
   logs: string[];            // recent stdout/stderr lines, for display
   debateName?: string;
-  videoPath?: string;        // absolute-ish path on disk; served via the video route
+  videoPath?: string;        // main video path on disk; served via the video route
   thumbnailPath?: string;
+  reelPaths: string[];       // the 3 reel video paths, once built
   error?: string;
   createdAt: number;
   child?: ChildProcess;      // the running pipeline process (omitted from API responses)
@@ -36,10 +37,11 @@ export function hasActiveRun(): boolean {
 
 /** The shape we send to the browser (drops the non-serializable child process). */
 export function publicView(r: RunState) {
-  const { child, videoPath, thumbnailPath, ...rest } = r;
+  const { child, videoPath, thumbnailPath, reelPaths, ...rest } = r;
   return {
     ...rest,
     hasVideo: Boolean(videoPath && r.status === 'done'),
     hasThumbnail: Boolean(thumbnailPath),
+    reelCount: reelPaths.length,   // the browser plays reels by index via ?reel=<n>
   };
 }

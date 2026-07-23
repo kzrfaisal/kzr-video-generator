@@ -32,6 +32,12 @@ export function cleanTmp(): void {
 }
 
 export function waitForEnter(message: string): Promise<void> {
+  // No interactive terminal (e.g. spawned by the web UI) — nothing can press ENTER,
+  // so continue immediately instead of hanging forever.
+  if (!process.stdin.isTTY) {
+    console.log(message + '\n[non-interactive: continuing automatically]');
+    return Promise.resolve();
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => rl.question(message, () => { rl.close(); resolve(); }));
 }

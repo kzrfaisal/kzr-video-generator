@@ -7,12 +7,21 @@ export const runtime = 'nodejs';
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const state = runs.get(id);
-  if (!state?.videoPath) {
+  if (!state) {
+    return new Response('Video not ready.', { status: 404 });
+  }
+
+  // ?reel=<n> selects a reel by index; otherwise serve the main video.
+  const reelParam = new URL(req.url).searchParams.get('reel');
+  const target = reelParam !== null
+    ? state.reelPaths[Number(reelParam)]
+    : state.videoPath;
+  if (!target) {
     return new Response('Video not ready.', { status: 404 });
   }
 
   // Guard: only ever serve from the publish folder.
-  const abs = path.resolve(state.videoPath);
+  const abs = path.resolve(target);
   const publishRoot = path.resolve('output', 'publish');
   if (!abs.startsWith(publishRoot) || !fs.existsSync(abs)) {
     return new Response('Video not found.', { status: 404 });

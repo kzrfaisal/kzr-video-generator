@@ -20,6 +20,8 @@ function ingest(state: RunState, chunk: string) {
       state.thumbnailPath = line.slice('@@THUMB@@ '.length).trim();
     } else if (line.startsWith('@@RESULT@@ ')) {
       state.videoPath = line.slice('@@RESULT@@ '.length).trim();
+    } else if (line.startsWith('@@REEL@@ ')) {
+      state.reelPaths.push(line.slice('@@REEL@@ '.length).trim());
     } else {
       state.logs.push(line);
       if (state.logs.length > 80) state.logs.shift(); // keep only the tail
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
     status: 'running',
     stage: 'starting',
     logs: [],
+    reelPaths: [],
     createdAt: Date.now(),
   };
   runs.set(id, state);
