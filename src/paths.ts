@@ -15,6 +15,11 @@ function parentName(name: string): string {
   return base.replace(/_part\d+$/, '');
 }
 
+/** The debate's script file (working file, kept in output/debates). */
+export function scriptPath(name: string): string {
+  return `output/debates/${name}.txt`;
+}
+
 /** Folder holding a debate's publishable deliverables, e.g. `output/publish/debate11`. */
 export function publishDir(name: string): string {
   return `output/publish/${parentName(name)}`;

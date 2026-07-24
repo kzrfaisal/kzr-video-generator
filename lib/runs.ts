@@ -7,16 +7,20 @@
  */
 import type { ChildProcess } from 'child_process';
 
-export type RunStatus = 'running' | 'done' | 'error';
+export type RunStatus = 'running' | 'awaiting_review' | 'done' | 'error';
 export type Stage = 'starting' | 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'done';
+export type Phase = 'script' | 'render' | 'full';
 
 export interface RunState {
   id: string;
   topic: string;
   status: RunStatus;
   stage: Stage;
+  phase?: Phase;             // which pipeline phase is/was running
   logs: string[];            // recent stdout/stderr lines, for display
   debateName?: string;
+  scriptText?: string;       // draft shown during awaiting_review
+  metadataText?: string;     // draft shown during awaiting_review
   videoPath?: string;        // main video path on disk; served via the video route
   thumbnailPath?: string;
   reelPaths: string[];       // the 3 reel video paths, once built
@@ -29,9 +33,11 @@ export interface RunState {
 const g = globalThis as unknown as { __runs?: Map<string, RunState> };
 export const runs: Map<string, RunState> = g.__runs ?? (g.__runs = new Map());
 
-/** True while any run is still executing — we allow only one at a time. */
+/** True while a run is executing or parked for review — we allow only one at a time. */
 export function hasActiveRun(): boolean {
-  for (const r of runs.values()) if (r.status === 'running') return true;
+  for (const r of runs.values()) {
+    if (r.status === 'running' || r.status === 'awaiting_review') return true;
+  }
   return false;
 }
 

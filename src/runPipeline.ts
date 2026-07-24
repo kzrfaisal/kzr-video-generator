@@ -1,14 +1,16 @@
 /**
- * Non-interactive version of the `main.ts` pipeline, for driving from the web UI.
+ * Non-interactive pipeline for the web UI, runnable in three modes:
  *
- * Differences from `main.ts`:
- *   - no `waitForEnter` review pause (nothing can press ENTER on a server)
- *   - reports stage changes through an `onStage` callback
- *   - also builds the 3 reels (like `npm run all`)
- *   - returns the paths of what it produced
+ *   tsx src/runPipeline.ts full   "<topic>" [--context=…]   script → render (no pause)
+ *   tsx src/runPipeline.ts script "<topic>" [--context=…]   script + metadata only
+ *   tsx src/runPipeline.ts render <debateName>              thumbnail → audio → video → reels
  *
- * The web app spawns this file as a child process (`tsx src/runPipeline.ts "<topic>"`)
- * and reads the `@@…@@` markers below off stdout to track progress.
+ * (No subcommand = `full`, so `tsx src/runPipeline.ts "<topic>"` still works.)
+ *
+ * The "script" then "render" split is what powers the review pause: the web app runs the
+ * script phase, lets the user edit the draft, then runs the render phase on approval.
+ *
+ * The web app parses the `@@…@@` markers below off stdout to track progress.
  */
 import 'dotenv/config';
 import fs from 'fs';
@@ -24,8 +26,7 @@ import { publishDir, publishThumbnail } from './paths';
 
 export type Stage = 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'done';
 
-export interface PipelineResult {
-  debateName: string;
+export interface RenderResult {
   videoPath: string;
   thumbnailPath: string | null;
   reelPaths: string[];
@@ -69,18 +70,25 @@ function buildReels(debateName: string): string[] {
   return findReels(debateName);
 }
 
-export async function runPipeline(
+/** Phase 1: generate the debate script (+ metadata). Returns the debate name. */
+export async function runScriptPhase(
   topic: string,
   context: string = '',
   onStage: (stage: Stage) => void = () => {},
-): Promise<PipelineResult> {
+): Promise<string> {
   onStage('script');
   const { debateName } = await generateScript(topic, context);
+  return debateName;
+}
 
+/** Phase 2: thumbnail → audio → video → reels for an already-generated script. */
+export async function runRenderPhase(
+  debateName: string,
+  onStage: (stage: Stage) => void = () => {},
+): Promise<RenderResult> {
   onStage('thumbnail');
   let thumbnailPath: string | null = null;
   if (config.generateThumbnail) {
-    // Non-fatal, same as main.ts — a missing thumbnail shouldn't kill the run.
     try {
       generateThumbnail(debateName);
       thumbnailPath = publishThumbnail(debateName);
@@ -100,27 +108,52 @@ export async function runPipeline(
   const reelPaths = buildReels(debateName);
 
   onStage('done');
-  return { debateName, videoPath, thumbnailPath, reelPaths };
+  return { videoPath, thumbnailPath, reelPaths };
+}
+
+/** Full run: script then render, no pause. */
+export async function runPipeline(
+  topic: string,
+  context: string = '',
+  onStage: (stage: Stage) => void = () => {},
+): Promise<RenderResult & { debateName: string }> {
+  const debateName = await runScriptPhase(topic, context, onStage);
+  const render = await runRenderPhase(debateName, onStage);
+  return { debateName, ...render };
+}
+
+function printRender(r: RenderResult) {
+  if (r.thumbnailPath) console.log(`@@THUMB@@ ${r.thumbnailPath}`);
+  console.log(`@@RESULT@@ ${r.videoPath}`);
+  for (const reel of r.reelPaths) console.log(`@@REEL@@ ${reel}`);
 }
 
 if (require.main === module) {
-  const topic = process.argv[2];
-  if (!topic) {
-    console.error('Usage: tsx src/runPipeline.ts "<topic>" [--context="<framing>"]');
-    process.exit(1);
-  }
-  const context = parseContextFlag() ?? '';
+  const emit = (stage: Stage) => console.log(`@@STAGE@@ ${stage}`);
+  const [sub] = process.argv.slice(2);
 
-  // Machine-readable markers the web app parses off stdout.
-  runPipeline(topic, context, stage => console.log(`@@STAGE@@ ${stage}`))
-    .then(result => {
-      console.log(`@@DEBATE@@ ${result.debateName}`);
-      if (result.thumbnailPath) console.log(`@@THUMB@@ ${result.thumbnailPath}`);
-      console.log(`@@RESULT@@ ${result.videoPath}`);
-      for (const reel of result.reelPaths) console.log(`@@REEL@@ ${reel}`);
-    })
-    .catch(err => {
-      console.error(err.message);
-      process.exit(1);
-    });
+  if (sub === 'script') {
+    const topic = process.argv[3];
+    if (!topic) { console.error('Usage: tsx src/runPipeline.ts script "<topic>" [--context=…]'); process.exit(1); }
+    const context = parseContextFlag() ?? '';
+    runScriptPhase(topic, context, emit)
+      .then(debateName => console.log(`@@DEBATE@@ ${debateName}`))
+      .catch(err => { console.error(err.message); process.exit(1); });
+
+  } else if (sub === 'render') {
+    const debateName = process.argv[3];
+    if (!debateName) { console.error('Usage: tsx src/runPipeline.ts render <debateName>'); process.exit(1); }
+    runRenderPhase(debateName, emit)
+      .then(printRender)
+      .catch(err => { console.error(err.message); process.exit(1); });
+
+  } else {
+    // Full run: first arg is the topic (backwards compatible).
+    const topic = sub;
+    if (!topic) { console.error('Usage: tsx src/runPipeline.ts "<topic>" [--context=…]'); process.exit(1); }
+    const context = parseContextFlag() ?? '';
+    runPipeline(topic, context, emit)
+      .then(r => { console.log(`@@DEBATE@@ ${r.debateName}`); printRender(r); })
+      .catch(err => { console.error(err.message); process.exit(1); });
+  }
 }

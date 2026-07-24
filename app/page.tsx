@@ -14,10 +14,12 @@ const STAGES = [
 // Shape returned by GET /api/run/[id] (see lib/runs.ts → publicView).
 interface RunView {
   id: string;
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'awaiting_review' | 'done' | 'error';
   stage: string;
   logs: string[];
   debateName?: string;
+  scriptText?: string;
+  metadataText?: string;
   error?: string;
   hasVideo: boolean;
   reelCount: number;
@@ -26,22 +28,35 @@ interface RunView {
 export default function Home() {
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
+  const [review, setReview] = useState(true);
   const [run, setRun] = useState<RunView | null>(null);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+
+  // Editable drafts shown during the review pause.
+  const [editScript, setEditScript] = useState('');
+  const [editMetadata, setEditMetadata] = useState('');
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reviewing = run?.status === 'awaiting_review';
+  const busy = starting || run?.status === 'running' || reviewing;
 
-  const busy = starting || run?.status === 'running';
-
-  // Stop polling if the component unmounts.
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  // When the run parks for review, seed the editor with the generated draft.
+  useEffect(() => {
+    if (reviewing) {
+      setEditScript(run?.scriptText ?? '');
+      setEditMetadata(run?.metadataText ?? '');
+    }
+  }, [reviewing, run?.scriptText, run?.metadataText]);
 
   function stopPolling() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
   }
 
-  // Ask the server for this run's state every 1.5s until it finishes.
+  // Poll the run's state until it finishes OR parks for review.
   function poll(id: string) {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -51,7 +66,7 @@ export default function Home() {
         if (!res.ok) throw new Error(data.error || 'Lost track of the run.');
         setRun(data as RunView);
         if (data.status !== 'running') {
-          stopPolling();
+          stopPolling(); // 'awaiting_review', 'done', or 'error' — nothing to poll for now
           if (data.status === 'error') setError(data.error || 'Generation failed.');
         }
       } catch (err) {
@@ -71,7 +86,7 @@ export default function Home() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, context }),
+        body: JSON.stringify({ topic, context, review }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to start.');
@@ -80,6 +95,24 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Failed to start.');
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function approve() {
+    if (!run) return;
+    setError('');
+    try {
+      const res = await fetch(`/api/run/${run.id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: editScript, metadata: editMetadata }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start rendering.');
+      setRun(prev => (prev ? { ...prev, status: 'running', stage: 'thumbnail' } : prev));
+      poll(run.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start rendering.');
     }
   }
 
@@ -112,8 +145,18 @@ export default function Home() {
         />
         <div className="hint">Steers the angle. Leave blank for a generic take.</div>
 
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={review}
+            onChange={e => setReview(e.target.checked)}
+            disabled={busy}
+          />
+          Review the script before rendering
+        </label>
+
         <button type="submit" disabled={busy}>
-          {busy ? 'Generating…' : 'Generate video'}
+          {busy ? 'Working…' : 'Generate video'}
         </button>
       </form>
 
@@ -123,13 +166,42 @@ export default function Home() {
         <section className="panel" style={{ marginTop: 20 }}>
           <div className="steps">
             {STAGES.map((s, i) => {
-              const cls =
-                run.status === 'done' || (currentIndex >= 0 && i < currentIndex) ? 'done'
-                : i === currentIndex ? 'active'
-                : '';
-              return <div key={s.key} className={`step ${cls}`}>{s.label}</div>;
+              const done = run.status === 'done'
+                || (currentIndex >= 0 && i < currentIndex)
+                || (reviewing && s.key === 'script');
+              const active = !reviewing && i === currentIndex && run.status === 'running';
+              return (
+                <div key={s.key} className={`step ${done ? 'done' : active ? 'active' : ''}`}>
+                  {s.label}
+                </div>
+              );
             })}
           </div>
+
+          {reviewing && (
+            <div className="review">
+              <p className="review-note">
+                Draft ready. Edit the script and thumbnail hook if you like, then render.
+              </p>
+              <label htmlFor="script">Script</label>
+              <textarea
+                id="script"
+                className="mono"
+                value={editScript}
+                onChange={e => setEditScript(e.target.value)}
+                rows={14}
+              />
+              <label htmlFor="metadata">Metadata <span className="optional">(YouTube title/description, hashtags, thumbnail hook)</span></label>
+              <textarea
+                id="metadata"
+                className="mono"
+                value={editMetadata}
+                onChange={e => setEditMetadata(e.target.value)}
+                rows={10}
+              />
+              <button type="button" onClick={approve}>Approve &amp; render</button>
+            </div>
+          )}
 
           {run.status === 'done' && run.hasVideo && (
             <>
@@ -137,9 +209,7 @@ export default function Home() {
               <div className="result-actions">
                 <a href={`/api/run/${run.id}/video`} download>Download video</a>
                 {run.debateName && (
-                  <span className="saved-path">
-                    Saved to output/publish/{run.debateName}/
-                  </span>
+                  <span className="saved-path">Saved to output/publish/{run.debateName}/</span>
                 )}
               </div>
 
@@ -150,9 +220,7 @@ export default function Home() {
                     {Array.from({ length: run.reelCount }).map((_, n) => (
                       <div className="reel" key={n}>
                         <video controls src={`/api/run/${run.id}/video?reel=${n}`} />
-                        <a href={`/api/run/${run.id}/video?reel=${n}`} download>
-                          Part {n + 1}
-                        </a>
+                        <a href={`/api/run/${run.id}/video?reel=${n}`} download>Part {n + 1}</a>
                       </div>
                     ))}
                   </div>
@@ -161,7 +229,7 @@ export default function Home() {
             </>
           )}
 
-          {run.logs?.length > 0 && <div className="logs">{run.logs.join('\n')}</div>}
+          {run.logs?.length > 0 && !reviewing && <div className="logs">{run.logs.join('\n')}</div>}
         </section>
       )}
     </main>

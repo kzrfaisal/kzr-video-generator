@@ -70,6 +70,20 @@ button {
 button:hover:not(:disabled) { background: var(--accent-hover); }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  margin-top: 16px;
+  cursor: pointer;
+}
+.check input { width: auto; }
+
+.review { margin-top: 8px; }
+.review-note { color: var(--muted); margin: 0 0 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
+
 .error {
   margin-top: 16px;
   color: var(--danger);
