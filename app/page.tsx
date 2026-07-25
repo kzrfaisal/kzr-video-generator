@@ -90,7 +90,9 @@ export default function Home() {
   const [auto, setAuto] = useState(false);
   const [autoStep, setAutoStep] = useState<AutoStep>(null);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
+  const [previewing, setPreviewing] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
@@ -291,6 +293,18 @@ export default function Home() {
 
   const setVoice = (sp: 'HOST' | 'A' | 'B', v: string) =>
     setCfg(c => ({ ...c, voices: { ...c.voices, [sp]: v } }));
+
+  async function previewVoice(voice: string) {
+    try {
+      if (audioRef.current) audioRef.current.pause();
+      setPreviewing(voice);
+      const a = new Audio(`/api/voice-sample/${voice}`);
+      audioRef.current = a;
+      a.onended = () => setPreviewing('');
+      a.onerror = () => setPreviewing('');
+      await a.play();
+    } catch { setPreviewing(''); }
+  }
   const setCustom = (k: keyof CustomSubtitle, v: string | number) =>
     setCfg(c => ({ ...c, customSubtitle: { ...(c.customSubtitle ?? DEFAULT_CUSTOM), [k]: v } }));
 
@@ -423,9 +437,15 @@ export default function Home() {
                 {(['HOST', 'A', 'B'] as const).map(sp => (
                   <div key={sp}>
                     <label>{sp === 'HOST' ? 'Host' : `Speaker ${sp}`} voice</label>
-                    <select value={cfg.voices[sp]} disabled={working} onChange={e => setVoice(sp, e.target.value)}>
-                      {options.voices.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    <div className="voice-field">
+                      <select value={cfg.voices[sp]} disabled={working} onChange={e => setVoice(sp, e.target.value)}>
+                        {options.voices.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                      <button type="button" className="preview-btn" title={`Preview ${cfg.voices[sp]}`}
+                              onClick={() => previewVoice(cfg.voices[sp])}>
+                        {previewing === cfg.voices[sp] ? '⏳' : '▶'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

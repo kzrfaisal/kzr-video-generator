@@ -3,10 +3,9 @@ import fs from 'fs';
 import { isValidDebateName } from '@/lib/stage';
 import { projectPath } from '@/src/paths';
 import { STYLES, VIDEO_STYLES } from '@/config';
+import { isValidVoice } from '@/lib/voices';
 
 export const runtime = 'nodejs';
-
-const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 
 // PUT /api/debate/<name>/config — save the per-run config choices into the project sidecar.
 export async function PUT(req: Request, { params }: { params: Promise<{ name: string }> }) {
@@ -37,7 +36,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   }
   if (c.voices) {
     for (const v of Object.values(c.voices)) {
-      if (!VOICES.includes(v as string)) {
+      if (!isValidVoice(v as string)) {
         return NextResponse.json({ error: `Invalid voice: ${v}` }, { status: 400 });
       }
     }

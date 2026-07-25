@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { STYLES, VIDEO_STYLES } from '@/config';
+import { VOICES } from '@/lib/voices';
 
 export const runtime = 'nodejs';
-
-// The OpenAI TTS voices available for tts-1 / tts-1-hd.
-const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 
 /** .ttf fonts bundled under assets/fonts, as {label, value} where value is the path. */
 function listFonts() {
@@ -19,7 +17,7 @@ function listFonts() {
 // GET /api/options — choices for the config panel, derived from config.ts so they stay in sync.
 export async function GET() {
   return NextResponse.json({
-    voices: VOICES,
+    voices: [...VOICES],
     ttsModels: ['tts-1', 'tts-1-hd'],
     subtitleStyles: Object.keys(STYLES),
     videoStyles: Object.keys(VIDEO_STYLES).filter(s => s !== 'style3'), // style3 = reels, chosen automatically

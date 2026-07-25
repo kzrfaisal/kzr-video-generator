@@ -95,6 +95,21 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 }
 .config-grid label { margin: 0 0 6px; font-size: 0.85rem; font-weight: 600; }
 
+.voice-field { display: flex; gap: 6px; }
+.voice-field select { flex: 1; }
+.preview-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.preview-btn:hover { border-color: var(--accent); }
+
 .custom-sub { margin-bottom: 18px; }
 .custom-sub .check { margin: 0 0 12px; }
 
