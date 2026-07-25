@@ -312,3 +312,49 @@ export const config: Config = {
   ...VIDEO_STYLES[activeStyle],
   videoStyle: activeStyle,
 };
+
+/** Per-run overrides the web UI can choose without editing this file. */
+export interface RunOverrides {
+  videoStyle?: string;                 // a VIDEO_STYLES key (e.g. style1 / style2)
+  voices?: Partial<Config['voices']>;  // per-speaker OpenAI voice
+  ttsModel?: string;                   // 'tts-1' | 'tts-1-hd'
+  ttsSpeed?: number;                   // 0.25–4.0
+  subtitleStyle?: string;              // one STYLES key, applied to all speakers
+  customSubtitle?: Partial<SubtitleStyle>; // custom fields layered over the chosen style
+}
+
+/**
+ * Apply per-run overrides onto the exported `config` singleton. Recomputes from
+ * baseConfig + the chosen video-style preset, then layers the individual overrides.
+ * Safe because a stage process runs one config at a time. Throws on unknown keys.
+ */
+export function configureRun(o: RunOverrides): void {
+  const style = o.videoStyle ?? config.videoStyle;
+  if (!(style in VIDEO_STYLES)) {
+    throw new Error(`Unknown video style: "${style}". Available: ${Object.keys(VIDEO_STYLES).join(', ')}`);
+  }
+  const merged: Config = { ...baseConfig, ...VIDEO_STYLES[style], videoStyle: style };
+
+  if (o.voices) {
+    merged.voices = { ...merged.voices };
+    for (const [speaker, voice] of Object.entries(o.voices)) {
+      if (voice) merged.voices[speaker] = voice;
+    }
+  }
+  if (o.ttsModel) merged.ttsModel = o.ttsModel as Config['ttsModel'];
+  if (typeof o.ttsSpeed === 'number') merged.ttsSpeed = o.ttsSpeed;
+  if (o.customSubtitle && Object.keys(o.customSubtitle).length > 0) {
+    // Register a runtime style entry combining the chosen base style + the custom fields,
+    // then point every speaker at it. createVideoSegments reads STYLES[key] at call time.
+    const baseKey = o.subtitleStyle && o.subtitleStyle in STYLES ? o.subtitleStyle : 'top-classic';
+    STYLES['__custom__'] = { ...STYLES[baseKey], ...o.customSubtitle };
+    merged.subtitleStyle = { HOST: '__custom__', A: '__custom__', B: '__custom__' };
+  } else if (o.subtitleStyle) {
+    if (!(o.subtitleStyle in STYLES)) {
+      throw new Error(`Unknown subtitle style: "${o.subtitleStyle}".`);
+    }
+    merged.subtitleStyle = { HOST: o.subtitleStyle, A: o.subtitleStyle, B: o.subtitleStyle };
+  }
+
+  Object.assign(config, merged);
+}

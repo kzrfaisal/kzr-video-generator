@@ -20,6 +20,25 @@ export function scriptPath(name: string): string {
   return `output/debates/${name}.txt`;
 }
 
+/**
+ * Per-debate project record (topic + context, and later config choices). This small
+ * sidecar is the app's source of truth for a debate beyond its raw files — it becomes a
+ * database row when this grows into a SaaS.
+ */
+export function projectPath(name: string): string {
+  return `output/debates/${name}.project.json`;
+}
+
+/** A reel part's script file, e.g. output/debates/reels/debate11_part1.txt. */
+export function reelPartScriptPath(name: string, part: number): string {
+  return `output/debates/reels/${name}_part${part}.txt`;
+}
+
+/** Sidecar holding the extracted reel parts' metadata (line-index → audio mapping). */
+export function reelsPartsPath(name: string): string {
+  return `output/debates/reels/${name}.parts.json`;
+}
+
 /** Folder holding a debate's publishable deliverables, e.g. `output/publish/debate11`. */
 export function publishDir(name: string): string {
   return `output/publish/${parentName(name)}`;

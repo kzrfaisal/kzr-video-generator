@@ -36,27 +36,23 @@ function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, 
   return destDir;
 }
 
-export async function run(debateName: string): Promise<void> {
+/**
+ * Build the reel videos from already-extracted parts, reusing the debate's audio.
+ * Split out from `run` so the web UI can extract + let the user edit the part scripts
+ * before building. `parts` carries each part's original line indices (audio mapping).
+ */
+export async function buildReelsFromParts(debateName: string, parts: ExtractedPart[]): Promise<void> {
   const srcAudioDir = `output/audios/${debateName}`;
   if (!fs.existsSync(srcAudioDir)) {
     throw new Error(
       `Source audio directory not found: ${srcAudioDir}. ` +
-      `Run \`npm run audio ${debateName}\` first so the reels command can reuse the audio.`
+      `Generate the YouTube video first so the reels can reuse its audio.`
     );
   }
   const srcFiles = fs.readdirSync(srcAudioDir).filter(f => f.endsWith('.mp3')).sort();
   if (srcFiles.length === 0) {
     throw new Error(`No audio files in ${srcAudioDir}.`);
   }
-
-  console.log(`Extracting reel scripts from ${debateName}...`);
-  const parts = extract(debateName);
-
-  await waitForEnter(
-    `\nReview the reel scripts before continuing:\n` +
-    parts.map(p => `  ${p.filePath}`).join('\n') +
-    `\n\nPress ENTER when ready to build the reel videos...`
-  );
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
@@ -67,7 +63,19 @@ export async function run(debateName: string): Promise<void> {
     console.log(`\nBuilding video for ${part.name}...`);
     makeVideo(`reels/${part.name}`);
   }
+}
 
+export async function run(debateName: string): Promise<void> {
+  console.log(`Extracting reel scripts from ${debateName}...`);
+  const parts = extract(debateName);
+
+  await waitForEnter(
+    `\nReview the reel scripts before continuing:\n` +
+    parts.map(p => `  ${p.filePath}`).join('\n') +
+    `\n\nPress ENTER when ready to build the reel videos...`
+  );
+
+  await buildReelsFromParts(debateName, parts);
   console.log('\nAll reel videos generated.');
 }
 

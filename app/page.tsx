@@ -2,235 +2,532 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// The visible stages, in order. Must match the `Stage` values runPipeline.ts emits.
-const STAGES = [
-  { key: 'script', label: 'Script' },
-  { key: 'thumbnail', label: 'Thumbnail' },
-  { key: 'audio', label: 'Audio' },
-  { key: 'video', label: 'Video' },
-  { key: 'reels', label: 'Reels' },
-] as const;
+interface ReelScript { part: number; script: string; }
 
-// Shape returned by GET /api/run/[id] (see lib/runs.ts → publicView).
-interface RunView {
-  id: string;
-  status: 'running' | 'awaiting_review' | 'done' | 'error';
-  stage: string;
-  logs: string[];
-  debateName?: string;
-  scriptText?: string;
-  metadataText?: string;
-  error?: string;
-  hasVideo: boolean;
-  reelCount: number;
+interface CustomSubtitle {
+  position?: string;
+  font?: string;
+  fontsize?: number;
+  fontcolor?: string;
+  bordercolor?: string;
+  borderw?: number;
+  margin?: number;
+}
+
+interface RunConfig {
+  voices: { HOST: string; A: string; B: string };
+  ttsModel: string;
+  ttsSpeed: number;
+  subtitleStyle: string;
+  videoStyle: string;
+  customSubtitle?: CustomSubtitle;
+}
+
+interface Options {
+  voices: string[];
+  ttsModels: string[];
+  subtitleStyles: string[];
+  videoStyles: string[];
+  fonts: { label: string; value: string }[];
+  positions: string[];
+}
+
+interface Debate {
+  debateName: string;
+  topic: string;
+  context: string;
+  script: string;
+  metadata: string | null;
+  config: Partial<RunConfig> | null;
+  videoExists: boolean;
+  reelScripts: ReelScript[];
+  reelsCount: number;
+}
+
+interface JobView { id: string; kind: 'video' | 'reels'; stage: string; status: string; error?: string; }
+
+// Auto ("Generate all") pauses at two gates: after the script, and after the reel scripts.
+type AutoStep = null | 'awaiting-script' | 'running' | 'awaiting-reels';
+
+const LS_KEY = 'activeDebate';
+const DEFAULT_CFG: RunConfig = {
+  voices: { HOST: 'alloy', A: 'echo', B: 'onyx' },
+  ttsModel: 'tts-1',
+  ttsSpeed: 1.0,
+  subtitleStyle: 'top-classic',
+  videoStyle: 'style1',
+};
+const DEFAULT_CUSTOM: CustomSubtitle = {
+  position: 'top', font: '', fontsize: 44, fontcolor: 'white',
+  bordercolor: 'black', borderw: 3, margin: 120,
+};
+
+/** Drop empty/undefined fields (e.g. blank font → use the default) before sending. */
+function cleanCustom(cs: CustomSubtitle): CustomSubtitle {
+  const out: CustomSubtitle = {};
+  for (const [k, v] of Object.entries(cs)) {
+    if (v !== undefined && v !== '') (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
 }
 
 export default function Home() {
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
-  const [review, setReview] = useState(true);
-  const [run, setRun] = useState<RunView | null>(null);
-  const [error, setError] = useState('');
-  const [starting, setStarting] = useState(false);
+  const [debate, setDebate] = useState<Debate | null>(null);
 
-  // Editable drafts shown during the review pause.
   const [editScript, setEditScript] = useState('');
   const [editMetadata, setEditMetadata] = useState('');
+  const [editReels, setEditReels] = useState<ReelScript[]>([]);
 
+  const [job, setJob] = useState<JobView | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+  const [options, setOptions] = useState<Options | null>(null);
+  const [cfg, setCfg] = useState<RunConfig>(DEFAULT_CFG);
+  const [useCustom, setUseCustom] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const [autoStep, setAutoStep] = useState<AutoStep>(null);
+  const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reviewing = run?.status === 'awaiting_review';
-  const busy = starting || run?.status === 'running' || reviewing;
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  // When the run parks for review, seed the editor with the generated draft.
   useEffect(() => {
-    if (reviewing) {
-      setEditScript(run?.scriptText ?? '');
-      setEditMetadata(run?.metadataText ?? '');
-    }
-  }, [reviewing, run?.scriptText, run?.metadataText]);
+    fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
+    const name = localStorage.getItem(LS_KEY);
+    if (name) fetch(`/api/debate/${name}`).then(async r => {
+      if (r.ok) loadDebate(await r.json());
+      else localStorage.removeItem(LS_KEY);
+    });
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
-  function stopPolling() {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
-  }
-
-  // Poll the run's state until it finishes OR parks for review.
-  function poll(id: string) {
-    stopPolling();
-    pollRef.current = setInterval(async () => {
+  // Poll whether a render is running anywhere, so we can disable render buttons app-wide.
+  useEffect(() => {
+    const iv = setInterval(async () => {
       try {
-        const res = await fetch(`/api/run/${id}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Lost track of the run.');
-        setRun(data as RunView);
-        if (data.status !== 'running') {
-          stopPolling(); // 'awaiting_review', 'done', or 'error' — nothing to poll for now
-          if (data.status === 'error') setError(data.error || 'Generation failed.');
+        const d = await (await fetch('/api/job/active')).json();
+        setGlobalBusy(d.active ? { debateName: d.debateName, kind: d.kind, stage: d.stage } : null);
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => clearInterval(iv);
+  }, []);
+
+  function loadDebate(d: Partial<Debate> & { debateName: string }) {
+    const norm: Debate = {
+      debateName: d.debateName,
+      topic: d.topic ?? '',
+      context: d.context ?? '',
+      script: d.script ?? '',
+      metadata: d.metadata ?? null,
+      config: d.config ?? null,
+      videoExists: d.videoExists ?? false,
+      reelScripts: d.reelScripts ?? [],
+      reelsCount: d.reelsCount ?? 0,
+    };
+    setDebate(norm);
+    setTopic(norm.topic);
+    setContext(norm.context);
+    setEditScript(norm.script);
+    setEditMetadata(norm.metadata ?? '');
+    setEditReels(norm.reelScripts);
+    setCfg({
+      ...DEFAULT_CFG,
+      ...(norm.config ?? {}),
+      voices: { ...DEFAULT_CFG.voices, ...(norm.config?.voices ?? {}) },
+      customSubtitle: norm.config?.customSubtitle ?? DEFAULT_CUSTOM,
+    });
+    setUseCustom(!!norm.config?.customSubtitle);
+    setNonce(n => n + 1);
+    localStorage.setItem(LS_KEY, norm.debateName);
+  }
+
+  async function refetchDebate(name: string) {
+    const res = await fetch(`/api/debate/${name}`);
+    if (res.ok) loadDebate(await res.json());
+  }
+
+  async function jsonOrThrow(res: Response) {
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed.');
+    return data;
+  }
+
+  async function call(action: string, fn: () => Promise<void>) {
+    setError('');
+    setBusy(action);
+    try { await fn(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong.'); }
+    finally { setBusy(''); }
+  }
+
+  // Start a long job and resolve when it finishes (rejecting on error). Updates progress
+  // and reloads the debate on completion. Used by both manual buttons and the auto chain.
+  async function startJobAndWait(startUrl: string, kind: 'video' | 'reels', name: string) {
+    const { jobId } = await jsonOrThrow(await fetch(startUrl, { method: 'POST' }));
+    setJob({ id: jobId, kind, stage: kind === 'video' ? 'thumbnail' : 'reels', status: 'running' });
+    await new Promise<void>((resolve, reject) => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const j = await (await fetch(`/api/job/${jobId}`)).json();
+          setJob({ id: jobId, kind, stage: j.stage, status: j.status, error: j.error });
+          if (j.status !== 'running') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            if (j.status === 'error') { setJob(null); reject(new Error(j.error || 'Render failed.')); }
+            else resolve();
+          }
+        } catch (err) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setJob(null);
+          reject(err instanceof Error ? err : new Error('Polling failed.'));
         }
-      } catch (err) {
-        stopPolling();
-        setError(err instanceof Error ? err.message : 'Polling failed.');
+      }, 1500);
+    });
+    setJob(null);
+    await refetchDebate(name);
+  }
+
+  function buildConfigPayload(): RunConfig {
+    const { customSubtitle, ...rest } = cfg;
+    return useCustom ? { ...rest, customSubtitle: cleanCustom(customSubtitle ?? DEFAULT_CUSTOM) } : rest;
+  }
+
+  // ---- raw steps (composable; used by manual buttons and the auto chain) ----
+  const rawScript = async () => {
+    if (!topic.trim()) throw new Error('Please enter a topic.');
+    loadDebate(await jsonOrThrow(await fetch('/api/debate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, context }),
+    })));
+  };
+  const rawSaveScript = async () => {
+    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/script`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: editScript }),
+    }));
+    setDebate(d => (d ? { ...d, script: editScript } : d));
+  };
+  const rawMetadata = async () => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/metadata`, { method: 'POST' }));
+    setEditMetadata(data.metadata);
+    setDebate(d => (d ? { ...d, metadata: data.metadata } : d));
+  };
+  const rawVideo = async () => {
+    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: buildConfigPayload() }),
+    }));
+    await startJobAndWait(`/api/debate/${debate!.debateName}/video`, 'video', debate!.debateName);
+  };
+  const rawExtract = async () => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/extract-reels`, { method: 'POST' }));
+    setEditReels(data.parts);
+    setDebate(d => (d ? { ...d, reelScripts: data.parts } : d));
+  };
+  const rawReels = async () => startJobAndWait(`/api/debate/${debate!.debateName}/reels`, 'reels', debate!.debateName);
+
+  // ---- manual buttons ----
+  const generateScript = () => call('script', rawScript);
+  const saveScript = () => call('save-script', rawSaveScript);
+  const generateMetadata = () => call('metadata', rawMetadata);
+  const saveMetadata = () => call('save-metadata', async () => {
+    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/metadata`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metadata: editMetadata }),
+    }));
+    setDebate(d => (d ? { ...d, metadata: editMetadata } : d));
+  });
+  const generateVideo = () => call('video', rawVideo);
+  const extractReels = () => call('extract', rawExtract);
+  const saveReel = (part: number, script: string) => call(`save-reel-${part}`, async () => {
+    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/reels-scripts`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ part, script }),
+    }));
+    setDebate(d => (d ? { ...d, reelScripts: d.reelScripts.map(r => r.part === part ? { part, script } : r) } : d));
+  });
+  const generateReels = () => call('reels', rawReels);
+
+  // ---- auto ("Generate all") ----
+  const generateAll = () => call('script', async () => {
+    await rawScript();
+    setAuto(true);
+    setAutoStep('awaiting-script');
+  });
+
+  async function continueAfterScript() {
+    setError(''); setBusy('auto'); setAutoStep('running');
+    try {
+      if (editScript !== debate!.script) await rawSaveScript();
+      await rawMetadata();
+      await rawVideo();
+      try { await rawExtract(); setAutoStep('awaiting-reels'); }
+      catch (e) {
+        setError(`Video done. Reel extraction failed: ${e instanceof Error ? e.message : ''}`);
+        setAuto(false); setAutoStep(null);
       }
-    }, 1500);
-  }
-
-  async function start(e: React.FormEvent) {
-    e.preventDefault();
-    setError('');
-    if (!topic.trim()) { setError('Please enter a topic.'); return; }
-    setStarting(true);
-    setRun(null);
-    try {
-      const res = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, context, review }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start.');
-      poll(data.id as string);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start.');
-    } finally {
-      setStarting(false);
-    }
+      setError(err instanceof Error ? err.message : 'Auto run failed.');
+      setAutoStep('awaiting-script');
+    } finally { setBusy(''); }
   }
 
-  async function approve() {
-    if (!run) return;
-    setError('');
-    try {
-      const res = await fetch(`/api/run/${run.id}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: editScript, metadata: editMetadata }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start rendering.');
-      setRun(prev => (prev ? { ...prev, status: 'running', stage: 'thumbnail' } : prev));
-      poll(run.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start rendering.');
-    }
+  async function continueAfterReels() {
+    setError(''); setBusy('auto'); setAutoStep('running');
+    try { await rawReels(); setAuto(false); setAutoStep(null); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Reel build failed.'); setAutoStep('awaiting-reels'); }
+    finally { setBusy(''); }
   }
 
-  const currentIndex = run ? STAGES.findIndex(s => s.key === run.stage) : -1;
+  function startNew() {
+    localStorage.removeItem(LS_KEY);
+    setDebate(null); setTopic(''); setContext('');
+    setEditScript(''); setEditMetadata(''); setEditReels([]);
+    setJob(null); setError(''); setAuto(false); setAutoStep(null);
+  }
+
+  const setVoice = (sp: 'HOST' | 'A' | 'B', v: string) =>
+    setCfg(c => ({ ...c, voices: { ...c.voices, [sp]: v } }));
+  const setCustom = (k: keyof CustomSubtitle, v: string | number) =>
+    setCfg(c => ({ ...c, customSubtitle: { ...(c.customSubtitle ?? DEFAULT_CUSTOM), [k]: v } }));
+
+  const working = busy !== '' || job !== null;
+  const name = debate?.debateName;
+  const cs = cfg.customSubtitle ?? DEFAULT_CUSTOM;
+  // A render running on some OTHER debate (our own render is already shown via `job`).
+  const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
 
   return (
     <main className="wrap">
-      <h1>Debate Video Generator</h1>
-      <p className="sub">Type a topic and generate a debate video.</p>
+      <div className="head-row">
+        <div>
+          <h1>Debate Video Generator</h1>
+          <p className="sub">{debate ? `Working on ${debate.debateName}` : 'Start a new debate video.'}</p>
+        </div>
+        {debate && <button className="btn-secondary" onClick={startNew} disabled={working}>Start new</button>}
+      </div>
 
-      <form className="panel" onSubmit={start}>
+      {renderElsewhere && (
+        <div className="busy-banner">
+          A render is in progress on <strong>{globalBusy!.debateName}</strong> ({globalBusy!.kind} · {globalBusy!.stage}).
+          Video and reel buttons are paused until it finishes.
+        </div>
+      )}
+
+      {/* 1 — Topic */}
+      <section className="panel">
+        <h2 className="step-title">1 · Topic</h2>
         <label htmlFor="topic">Topic</label>
-        <input
-          id="topic"
-          value={topic}
-          onChange={e => setTopic(e.target.value)}
-          placeholder="e.g. AI replacing teachers"
-          disabled={busy}
-        />
-
-        <label htmlFor="context">
-          Context <span className="optional">(optional)</span>
-        </label>
-        <textarea
-          id="context"
-          value={context}
-          onChange={e => setContext(e.target.value)}
-          placeholder="Optional framing or a real event to anchor the debate…"
-          disabled={busy}
-        />
-        <div className="hint">Steers the angle. Leave blank for a generic take.</div>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={review}
-            onChange={e => setReview(e.target.checked)}
-            disabled={busy}
-          />
-          Review the script before rendering
-        </label>
-
-        <button type="submit" disabled={busy}>
-          {busy ? 'Working…' : 'Generate video'}
-        </button>
-      </form>
+        <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
+               placeholder="e.g. AI replacing teachers" disabled={working || !!debate} />
+        <label htmlFor="context">Context <span className="optional">(optional)</span></label>
+        <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
+                  placeholder="Optional framing or a real event to anchor the debate…"
+                  disabled={working || !!debate} />
+        {!debate && (
+          <div className="row">
+            <button onClick={generateScript} disabled={working}>
+              {busy === 'script' && !auto ? 'Generating…' : 'Generate script'}
+            </button>
+            <button className="btn-secondary" onClick={generateAll} disabled={working || renderElsewhere}>
+              {busy === 'script' && auto ? 'Generating…' : 'Generate all'}
+            </button>
+          </div>
+        )}
+      </section>
 
       {error && <div className="error">{error}</div>}
 
-      {run && (
-        <section className="panel" style={{ marginTop: 20 }}>
-          <div className="steps">
-            {STAGES.map((s, i) => {
-              const done = run.status === 'done'
-                || (currentIndex >= 0 && i < currentIndex)
-                || (reviewing && s.key === 'script');
-              const active = !reviewing && i === currentIndex && run.status === 'running';
-              return (
-                <div key={s.key} className={`step ${done ? 'done' : active ? 'active' : ''}`}>
-                  {s.label}
-                </div>
-              );
-            })}
-          </div>
-
-          {reviewing && (
-            <div className="review">
-              <p className="review-note">
-                Draft ready. Edit the script and thumbnail hook if you like, then render.
-              </p>
-              <label htmlFor="script">Script</label>
-              <textarea
-                id="script"
-                className="mono"
-                value={editScript}
-                onChange={e => setEditScript(e.target.value)}
-                rows={14}
-              />
-              <label htmlFor="metadata">Metadata <span className="optional">(YouTube title/description, hashtags, thumbnail hook)</span></label>
-              <textarea
-                id="metadata"
-                className="mono"
-                value={editMetadata}
-                onChange={e => setEditMetadata(e.target.value)}
-                rows={10}
-              />
-              <button type="button" onClick={approve}>Approve &amp; render</button>
+      {debate && (
+        <>
+          {/* 2 — Script */}
+          <section className="panel">
+            <h2 className="step-title">2 · Script</h2>
+            <textarea className="mono" rows={14} value={editScript}
+                      onChange={e => setEditScript(e.target.value)} disabled={working} />
+            <div className="row">
+              <button className="btn-secondary" onClick={saveScript}
+                      disabled={working || editScript === debate.script}>
+                {busy === 'save-script' ? 'Saving…' : 'Save script'}
+              </button>
+              {autoStep === 'awaiting-script' && (
+                <button onClick={continueAfterScript} disabled={working || renderElsewhere}>
+                  Continue → metadata &amp; video
+                </button>
+              )}
             </div>
-          )}
+          </section>
 
-          {run.status === 'done' && run.hasVideo && (
-            <>
-              <video controls src={`/api/run/${run.id}/video`} />
-              <div className="result-actions">
-                <a href={`/api/run/${run.id}/video`} download>Download video</a>
-                {run.debateName && (
-                  <span className="saved-path">Saved to output/publish/{run.debateName}/</span>
+          {/* 3 — Metadata */}
+          <section className="panel">
+            <h2 className="step-title">3 · Metadata</h2>
+            {debate.metadata === null ? (
+              <>
+                <p className="review-note">YouTube title, description, hashtags, reel captions, thumbnail hook.</p>
+                <button onClick={generateMetadata} disabled={working}>
+                  {busy === 'metadata' ? 'Generating…' : 'Generate metadata'}
+                </button>
+              </>
+            ) : (
+              <>
+                <textarea className="mono" rows={10} value={editMetadata}
+                          onChange={e => setEditMetadata(e.target.value)} disabled={working} />
+                <div className="row">
+                  <button className="btn-secondary" onClick={saveMetadata}
+                          disabled={working || editMetadata === debate.metadata}>
+                    {busy === 'save-metadata' ? 'Saving…' : 'Save metadata'}
+                  </button>
+                  <button className="btn-secondary" onClick={generateMetadata} disabled={working}>
+                    {busy === 'metadata' ? 'Regenerating…' : 'Regenerate'}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* 4 — YouTube video */}
+          <section className="panel">
+            <h2 className="step-title">4 · YouTube video</h2>
+
+            {options && (
+              <div className="config-grid">
+                <div>
+                  <label>Video style</label>
+                  <select value={cfg.videoStyle} disabled={working}
+                          onChange={e => setCfg(c => ({ ...c, videoStyle: e.target.value }))}>
+                    {options.videoStyles.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Subtitle style</label>
+                  <select value={cfg.subtitleStyle} disabled={working}
+                          onChange={e => setCfg(c => ({ ...c, subtitleStyle: e.target.value }))}>
+                    {options.subtitleStyles.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>TTS model</label>
+                  <select value={cfg.ttsModel} disabled={working}
+                          onChange={e => setCfg(c => ({ ...c, ttsModel: e.target.value }))}>
+                    {options.ttsModels.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Speed</label>
+                  <input type="number" step={0.05} min={0.25} max={4} value={cfg.ttsSpeed} disabled={working}
+                         onChange={e => setCfg(c => ({ ...c, ttsSpeed: Number(e.target.value) }))} />
+                </div>
+                {(['HOST', 'A', 'B'] as const).map(sp => (
+                  <div key={sp}>
+                    <label>{sp === 'HOST' ? 'Host' : `Speaker ${sp}`} voice</label>
+                    <select value={cfg.voices[sp]} disabled={working} onChange={e => setVoice(sp, e.target.value)}>
+                      {options.voices.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {options && (
+              <div className="custom-sub">
+                <label className="check">
+                  <input type="checkbox" checked={useCustom} disabled={working}
+                         onChange={e => setUseCustom(e.target.checked)} />
+                  Customize subtitle (overrides the subtitle style above)
+                </label>
+                {useCustom && (
+                  <div className="config-grid">
+                    <div>
+                      <label>Position</label>
+                      <select value={cs.position} disabled={working} onChange={e => setCustom('position', e.target.value)}>
+                        {options.positions.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label>Font</label>
+                      <select value={cs.font} disabled={working} onChange={e => setCustom('font', e.target.value)}>
+                        <option value="">(default)</option>
+                        {options.fonts.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      </select>
+                    </div>
+                    <div><label>Font size</label>
+                      <input type="number" min={10} max={200} value={cs.fontsize} disabled={working}
+                             onChange={e => setCustom('fontsize', Number(e.target.value))} /></div>
+                    <div><label>Text color</label>
+                      <input value={cs.fontcolor} disabled={working} placeholder="white or 0xFFFFFF"
+                             onChange={e => setCustom('fontcolor', e.target.value)} /></div>
+                    <div><label>Border color</label>
+                      <input value={cs.bordercolor} disabled={working} placeholder="black"
+                             onChange={e => setCustom('bordercolor', e.target.value)} /></div>
+                    <div><label>Border width</label>
+                      <input type="number" min={0} max={20} value={cs.borderw} disabled={working}
+                             onChange={e => setCustom('borderw', Number(e.target.value))} /></div>
+                    <div><label>Margin (px)</label>
+                      <input type="number" min={0} max={1000} value={cs.margin} disabled={working}
+                             onChange={e => setCustom('margin', Number(e.target.value))} /></div>
+                  </div>
                 )}
               </div>
+            )}
 
-              {run.reelCount > 0 && (
-                <>
-                  <h3 style={{ margin: '28px 0 4px' }}>Reels</h3>
+            {job?.kind === 'video' && <p className="review-note">Rendering… <strong>{job.stage}</strong></p>}
+            {debate.videoExists && <video controls src={`/api/debate/${name}/video?t=${nonce}`} />}
+            <div className="row">
+              <button onClick={generateVideo} disabled={working || renderElsewhere}>
+                {job?.kind === 'video' ? 'Rendering…' : debate.videoExists ? 'Regenerate video' : 'Generate YouTube video'}
+              </button>
+              {debate.videoExists && <a className="dl" href={`/api/debate/${name}/video`} download>Download</a>}
+            </div>
+          </section>
+
+          {/* 5 — Reels */}
+          <section className="panel">
+            <h2 className="step-title">5 · Reels</h2>
+            {!debate.videoExists ? (
+              <p className="review-note">Generate the YouTube video first — reels reuse its audio.</p>
+            ) : editReels.length === 0 ? (
+              <button onClick={extractReels} disabled={working}>
+                {busy === 'extract' ? 'Extracting…' : 'Extract reel scripts'}
+              </button>
+            ) : (
+              <>
+                {editReels.map(r => (
+                  <div key={r.part} className="reel-edit">
+                    <label>Part {r.part}</label>
+                    <textarea className="mono" rows={7} value={r.script} disabled={working}
+                              onChange={e => setEditReels(rs => rs.map(x => x.part === r.part ? { ...x, script: e.target.value } : x))} />
+                    <button className="btn-secondary" onClick={() => saveReel(r.part, r.script)}
+                            disabled={working || debate.reelScripts.find(x => x.part === r.part)?.script === r.script}>
+                      {busy === `save-reel-${r.part}` ? 'Saving…' : `Save part ${r.part}`}
+                    </button>
+                  </div>
+                ))}
+                {job?.kind === 'reels' && <p className="review-note">Building reels…</p>}
+                <div className="row">
+                  <button onClick={generateReels} disabled={working || renderElsewhere}>
+                    {job?.kind === 'reels' ? 'Building…' : debate.reelsCount > 0 ? 'Regenerate reels' : 'Generate reel videos'}
+                  </button>
+                  {autoStep === 'awaiting-reels' && (
+                    <button onClick={continueAfterReels} disabled={working || renderElsewhere}>Continue → build reels</button>
+                  )}
+                </div>
+                {debate.reelsCount > 0 && (
                   <div className="reels">
-                    {Array.from({ length: run.reelCount }).map((_, n) => (
+                    {Array.from({ length: debate.reelsCount }).map((_, n) => (
                       <div className="reel" key={n}>
-                        <video controls src={`/api/run/${run.id}/video?reel=${n}`} />
-                        <a href={`/api/run/${run.id}/video?reel=${n}`} download>Part {n + 1}</a>
+                        <video controls src={`/api/debate/${name}/video?reel=${n}&t=${nonce}`} />
+                        <a href={`/api/debate/${name}/video?reel=${n}`} download>Part {n + 1}</a>
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-            </>
-          )}
-
-          {run.logs?.length > 0 && !reviewing && <div className="logs">{run.logs.join('\n')}</div>}
-        </section>
+                )}
+              </>
+            )}
+          </section>
+        </>
       )}
     </main>
   );

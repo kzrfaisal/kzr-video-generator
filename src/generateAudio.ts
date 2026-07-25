@@ -9,16 +9,30 @@ const client = new OpenAI();
 
 const TTS_COST_PER_CHAR = 15 / 1_000_000;
 
-async function generateTts(text: string, mp3File: string, voice: string): Promise<void> {
-  const response = await client.audio.speech.create({
-    model: config.ttsModel as 'tts-1' | 'tts-1-hd',
-    voice: voice as 'alloy' | 'echo' | 'onyx',
-    input: text,
-    response_format: 'mp3',
-    speed: config.ttsSpeed,
-  });
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(mp3File, buffer);
+async function generateTts(text: string, mp3File: string, voice: string, attempt = 1): Promise<void> {
+  const MAX_ATTEMPTS = 4;
+  try {
+    const response = await client.audio.speech.create({
+      model: config.ttsModel as 'tts-1' | 'tts-1-hd',
+      voice: voice as 'alloy' | 'echo' | 'onyx',
+      input: text,
+      response_format: 'mp3',
+      speed: config.ttsSpeed,
+    });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(mp3File, buffer);
+  } catch (err: any) {
+    // Retry transient failures (rate limits, 5xx, network) — OpenAI TTS occasionally 500s.
+    const status = err?.status;
+    const retryable = status === undefined || status === 429 || status >= 500;
+    if (retryable && attempt < MAX_ATTEMPTS) {
+      const waitMs = 1000 * 2 ** (attempt - 1); // 1s, 2s, 4s
+      console.warn(`TTS attempt ${attempt}/${MAX_ATTEMPTS} failed (${err.message}); retrying in ${waitMs}ms…`);
+      await new Promise(r => setTimeout(r, waitMs));
+      return generateTts(text, mp3File, voice, attempt + 1);
+    }
+    throw err;
+  }
 }
 
 export async function run(debateName: string): Promise<{ characters: number; audioCost: number }> {

@@ -34,12 +34,48 @@ h1 { font-size: 1.6rem; margin: 0 0 4px; }
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
+  margin-bottom: 16px;
+}
+
+.head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+
+.step-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.row button { margin-top: 0; width: auto; }
+
+.btn-secondary {
+  width: auto;
+  margin-top: 12px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { background: #20242e; border-color: var(--accent); }
+
+.disabled-panel { opacity: 0.5; }
+
+.reel-edit { margin-bottom: 18px; }
+.reel-edit label { margin-top: 0; }
+.reel-edit button { margin-top: 8px; }
+
+.dl {
+  align-self: center;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
 }
 
 label { display: block; font-weight: 600; margin: 14px 0 6px; }
 label:first-child { margin-top: 0; }
 
-input, textarea {
+input, textarea, select {
   width: 100%;
   background: #0f1218;
   border: 1px solid var(--border);
@@ -49,7 +85,18 @@ input, textarea {
   font: inherit;
 }
 textarea { resize: vertical; min-height: 72px; }
-input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 14px;
+  margin-bottom: 18px;
+}
+.config-grid label { margin: 0 0 6px; font-size: 0.85rem; font-weight: 600; }
+
+.custom-sub { margin-bottom: 18px; }
+.custom-sub .check { margin: 0 0 12px; }
 
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
 .optional { font-weight: 400; color: var(--muted); }
@@ -91,6 +138,16 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   border: 1px solid rgba(255, 107, 107, 0.3);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+.busy-banner {
+  margin-bottom: 16px;
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.08);
+  border: 1px solid rgba(79, 140, 255, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
 }
 
 /* Progress stepper */
