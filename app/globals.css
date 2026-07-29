@@ -113,6 +113,21 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .custom-sub { margin-bottom: 18px; }
 .custom-sub .check { margin: 0 0 12px; }
 
+.sub-action {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+.sub-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ok-tag {
+  font-size: 0.72rem;
+  color: var(--ok);
+  border: 1px solid rgba(78, 201, 138, 0.4);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.thumb { width: 100%; max-width: 360px; border-radius: 8px; display: block; margin-bottom: 12px; }
+
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
 .optional { font-weight: 400; color: var(--muted); }
 .saved-path { color: var(--muted); }
@@ -153,6 +168,9 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   border: 1px solid rgba(255, 107, 107, 0.3);
   border-radius: 8px;
   padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
 }
 
 .busy-banner {

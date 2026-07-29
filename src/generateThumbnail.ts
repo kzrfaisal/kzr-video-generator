@@ -2,11 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { config } from '../config';
-import { ensureDir } from './utils';
+import { ensureDir, wrapText } from './utils';
 import { publishDir, publishMetadata, publishThumbnail } from './paths';
 
 const THUMB_W = 1280;
 const THUMB_H = 720;
+// Hook auto-fit: keep the hook on ONE line, shrinking the font if it would overflow.
+// Only wrap when even the minimum size wouldn't fit.
+const HOOK_USABLE_W = 1180;  // canvas width minus side margins
+const HOOK_CHAR_K = 0.8;     // approx glyph-width / fontsize for the thumbnail font (calibrated)
+const HOOK_MIN_FONT = 38;    // don't shrink below this — wrap instead
 
 function readHookFromMetadata(debateName: string): string {
   const mdPath = publishMetadata(debateName);
@@ -47,7 +52,26 @@ export function generateThumbnail(debateName: string): void {
      .replace(/'/g, "\\\\'")
      .replace(/%/g, '\\\\%');
   const labelText = escapeInline('DEBATE');
-  const hookText  = escapeInline(hook);
+
+  // Fit the hook on ONE line: shrink the font if the configured size would overflow.
+  // Wrap only in the extreme case where even HOOK_MIN_FONT wouldn't fit.
+  const baseSize = tf.hook.size;
+  const fitFont = Math.floor(HOOK_USABLE_W / (hook.length * HOOK_CHAR_K));
+  let hookSize = baseSize;
+  let hookRendered = hook;
+  if (fitFont < baseSize) {
+    if (fitFont >= HOOK_MIN_FONT) {
+      hookSize = fitFont;                    // smaller, still one line
+    } else {
+      hookSize = HOOK_MIN_FONT;              // very long → wrap to fit the min size
+      const wrapChars = Math.max(8, Math.floor(HOOK_USABLE_W / (HOOK_MIN_FONT * HOOK_CHAR_K)));
+      hookRendered = wrapText(hook, wrapChars).join('\n');
+    }
+  }
+  // Render from a file (avoids inline text escaping and handles the rare multi-line case).
+  ensureDir('tmp');
+  const hookFile = path.resolve(`tmp/thumb_hook_${debateName.replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`);
+  fs.writeFileSync(hookFile, hookRendered, 'utf-8');
 
   // Fake "glow" on the hook: stack drawtext passes with widening borders + fading alpha,
   // then draw the solid fill on top. ffmpeg has no real blur, so this halo is the closest approximation.
@@ -57,7 +81,7 @@ export function generateThumbnail(debateName: string): void {
     { w: 8, a: 0.10 },
     { w: 4, a: 0.20 },
   ];
-  const hookBase = `fontfile=${fontfile}:text=${hookText}:fontsize=${tf.hook.size}:x=${tf.hook.x}:y=${tf.hook.y}`;
+  const hookBase = `fontfile=${fontfile}:textfile=${hookFile}:fontsize=${hookSize}:x=${tf.hook.x}:y=${tf.hook.y}`;
   const hookGlow = haloPasses.map(p =>
     `drawtext=${hookBase}:fontcolor=${glowColor}@${p.a}:borderw=${p.w}:bordercolor=${glowColor}@${p.a}`
   );

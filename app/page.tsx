@@ -39,19 +39,21 @@ interface Debate {
   script: string;
   metadata: string | null;
   config: Partial<RunConfig> | null;
+  thumbnailExists: boolean;
+  audioExists: boolean;
   videoExists: boolean;
   reelScripts: ReelScript[];
   reelsCount: number;
 }
 
-interface JobView { id: string; kind: 'video' | 'reels'; stage: string; status: string; error?: string; }
+interface JobView { id: string; kind: 'audio' | 'video' | 'reels'; stage: string; status: string; error?: string; }
 
 // Auto ("Generate all") pauses at two gates: after the script, and after the reel scripts.
 type AutoStep = null | 'awaiting-script' | 'running' | 'awaiting-reels';
 
 const LS_KEY = 'activeDebate';
 const DEFAULT_CFG: RunConfig = {
-  voices: { HOST: 'alloy', A: 'echo', B: 'onyx' },
+  voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
   subtitleStyle: 'top-classic',
@@ -123,6 +125,8 @@ export default function Home() {
       script: d.script ?? '',
       metadata: d.metadata ?? null,
       config: d.config ?? null,
+      thumbnailExists: d.thumbnailExists ?? false,
+      audioExists: d.audioExists ?? false,
       videoExists: d.videoExists ?? false,
       reelScripts: d.reelScripts ?? [],
       reelsCount: d.reelsCount ?? 0,
@@ -151,7 +155,7 @@ export default function Home() {
 
   async function jsonOrThrow(res: Response) {
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Request failed.');
+    if (!res.ok) throw new Error((data.error || 'Request failed.') + (data.detail ? `\n${data.detail}` : ''));
     return data;
   }
 
@@ -165,9 +169,9 @@ export default function Home() {
 
   // Start a long job and resolve when it finishes (rejecting on error). Updates progress
   // and reloads the debate on completion. Used by both manual buttons and the auto chain.
-  async function startJobAndWait(startUrl: string, kind: 'video' | 'reels', name: string) {
+  async function startJobAndWait(startUrl: string, kind: 'audio' | 'video' | 'reels', name: string) {
     const { jobId } = await jsonOrThrow(await fetch(startUrl, { method: 'POST' }));
-    setJob({ id: jobId, kind, stage: kind === 'video' ? 'thumbnail' : 'reels', status: 'running' });
+    setJob({ id: jobId, kind, stage: kind, status: 'running' });
     await new Promise<void>((resolve, reject) => {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
@@ -217,11 +221,23 @@ export default function Home() {
     setEditMetadata(data.metadata);
     setDebate(d => (d ? { ...d, metadata: data.metadata } : d));
   };
-  const rawVideo = async () => {
+  const saveConfig = async () => {
     await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/config`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config: buildConfigPayload() }),
     }));
+  };
+  const rawThumbnail = async () => {
+    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/thumbnail`, { method: 'POST' }));
+    setDebate(d => (d ? { ...d, thumbnailExists: true } : d));
+    setNonce(n => n + 1);
+  };
+  const rawAudio = async () => {
+    await saveConfig(); // voices / TTS model / speed
+    await startJobAndWait(`/api/debate/${debate!.debateName}/audio`, 'audio', debate!.debateName);
+  };
+  const rawVideoRender = async () => {
+    await saveConfig(); // subtitle / video style
     await startJobAndWait(`/api/debate/${debate!.debateName}/video`, 'video', debate!.debateName);
   };
   const rawExtract = async () => {
@@ -242,7 +258,9 @@ export default function Home() {
     }));
     setDebate(d => (d ? { ...d, metadata: editMetadata } : d));
   });
-  const generateVideo = () => call('video', rawVideo);
+  const generateThumbnail = () => call('thumbnail', rawThumbnail);
+  const generateAudio = () => call('audio', rawAudio);
+  const generateVideo = () => call('video', rawVideoRender);
   const extractReels = () => call('extract', rawExtract);
   const saveReel = (part: number, script: string) => call(`save-reel-${part}`, async () => {
     await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/reels-scripts`, {
@@ -265,7 +283,9 @@ export default function Home() {
     try {
       if (editScript !== debate!.script) await rawSaveScript();
       await rawMetadata();
-      await rawVideo();
+      await rawThumbnail();
+      await rawAudio();
+      await rawVideoRender();
       try { await rawExtract(); setAutoStep('awaiting-reels'); }
       catch (e) {
         setError(`Video done. Reel extraction failed: ${e instanceof Error ? e.message : ''}`);
@@ -493,21 +513,56 @@ export default function Home() {
               </div>
             )}
 
-            {job?.kind === 'video' && <p className="review-note">Rendering… <strong>{job.stage}</strong></p>}
-            {debate.videoExists && <video controls src={`/api/debate/${name}/video?t=${nonce}`} />}
-            <div className="row">
-              <button onClick={generateVideo} disabled={working || renderElsewhere}>
-                {job?.kind === 'video' ? 'Rendering…' : debate.videoExists ? 'Regenerate video' : 'Generate YouTube video'}
+            {/* Thumbnail */}
+            <div className="sub-action">
+              <div className="sub-head"><strong>Thumbnail</strong>{debate.thumbnailExists && <span className="ok-tag">ready</span>}</div>
+              {debate.metadata === null ? (
+                <p className="review-note">Generate metadata first — the thumbnail uses its hook.</p>
+              ) : (
+                <>
+                  {debate.thumbnailExists && <img className="thumb" src={`/api/debate/${name}/thumbnail?t=${nonce}`} alt="thumbnail" />}
+                  <button className="btn-secondary" onClick={generateThumbnail} disabled={working}>
+                    {busy === 'thumbnail' ? 'Rendering…' : debate.thumbnailExists ? 'Regenerate thumbnail' : 'Generate thumbnail'}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Audio */}
+            <div className="sub-action">
+              <div className="sub-head"><strong>Audio</strong>{debate.audioExists && <span className="ok-tag">ready</span>}</div>
+              <p className="review-note">Uses the voices &amp; TTS settings above. Costs OpenAI TTS.</p>
+              {job?.kind === 'audio' && <p className="review-note">Generating audio…</p>}
+              <button onClick={generateAudio} disabled={working || renderElsewhere}>
+                {job?.kind === 'audio' ? 'Generating…' : debate.audioExists ? 'Regenerate audio' : 'Generate audio'}
               </button>
-              {debate.videoExists && <a className="dl" href={`/api/debate/${name}/video`} download>Download</a>}
+            </div>
+
+            {/* Video */}
+            <div className="sub-action">
+              <div className="sub-head"><strong>Video</strong></div>
+              {!debate.audioExists ? (
+                <p className="review-note">Generate the audio first — the video is built from it.</p>
+              ) : (
+                <>
+                  {job?.kind === 'video' && <p className="review-note">Rendering video…</p>}
+                  {debate.videoExists && <video controls src={`/api/debate/${name}/video?t=${nonce}`} />}
+                  <div className="row">
+                    <button onClick={generateVideo} disabled={working || renderElsewhere}>
+                      {job?.kind === 'video' ? 'Rendering…' : debate.videoExists ? 'Regenerate video' : 'Generate video'}
+                    </button>
+                    {debate.videoExists && <a className="dl" href={`/api/debate/${name}/video`} download>Download</a>}
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
           {/* 5 — Reels */}
           <section className="panel">
             <h2 className="step-title">5 · Reels</h2>
-            {!debate.videoExists ? (
-              <p className="review-note">Generate the YouTube video first — reels reuse its audio.</p>
+            {!debate.audioExists ? (
+              <p className="review-note">Generate the audio first — reels reuse it.</p>
             ) : editReels.length === 0 ? (
               <button onClick={extractReels} disabled={working}>
                 {busy === 'extract' ? 'Extracting…' : 'Extract reel scripts'}

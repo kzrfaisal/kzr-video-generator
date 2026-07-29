@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import fs from 'fs';
 import OpenAI from 'openai';
-import { ensureDir, parseContextFlag } from './utils';
+import { ensureDir, parseContextFlag, withRetry } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
 
@@ -42,10 +42,10 @@ export async function run(topic: string, context: string = ''): Promise<{
     .replace('{context}', context)
     .replace('{videoLength}', config.videoLengthTarget);
 
-  const response = await client.chat.completions.create({
+  const response = await withRetry(() => client.chat.completions.create({
     model: config.scriptModel,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }), 'script');
 
   const content = response.choices[0].message.content ?? '';
 

@@ -70,7 +70,7 @@ export const STYLES: Record<string, SubtitleStyle> = {
     fontsize: 56, fontcolor: 'white',
     bordercolor: 'black', borderw: 4,
     position: 'top', margin: 320,
-    wrapWidth: 22, lineHeight: 72,
+    wrapWidth: 28, lineHeight: 72,
   },
 };
 
@@ -196,7 +196,7 @@ const baseConfig: Config = {
 
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
-  voices: { HOST: 'alloy', A: 'echo', B: 'onyx' },
+  voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
 
   scriptModel: 'gpt-4o-mini',
   videoLengthTarget: '5-7 minutes',

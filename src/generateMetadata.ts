@@ -2,7 +2,7 @@ import 'dotenv/config';
 import fs from 'fs';
 import OpenAI from 'openai';
 import { config } from '../config';
-import { ensureDir } from './utils';
+import { ensureDir, withRetry } from './utils';
 import { publishDir, publishMetadata } from './paths';
 
 const client = new OpenAI();
@@ -32,10 +32,10 @@ async function fetchPopularHashtags(topic: string, context: string): Promise<{
     (context ? `\n\nAdditional framing: ${context}` : '') +
     `\n\nReturn 15-25 hashtags on a SINGLE space-separated line. Every hashtag must start with # and contain only lowercase letters and digits. No explanation, no numbering, no other text.`;
 
-  const response = await client.chat.completions.create({
+  const response = await withRetry(() => client.chat.completions.create({
     model: HASHTAG_SEARCH_MODEL,
     messages: [{ role: 'user', content: searchPrompt }],
-  });
+  }), 'hashtags');
 
   const raw = response.choices[0].message.content ?? '';
   // Keep only # tokens; force lowercase; strip any stray punctuation the model added.
@@ -86,10 +86,10 @@ export async function generateMetadata(
     .replace('{script}', scriptContent)
     .replace('{suggestedHashtags}', suggestedHashtags);
 
-  const response = await client.chat.completions.create({
+  const response = await withRetry(() => client.chat.completions.create({
     model: config.scriptModel,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }), 'metadata');
 
   const content = response.choices[0].message.content ?? '';
   // Safety net: force every #hashtag in the generated markdown to lowercase.

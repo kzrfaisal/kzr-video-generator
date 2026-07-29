@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { isValidDebateName } from '@/lib/stage';
 import { scriptPath, publishMetadata, projectPath, reelPartScriptPath } from '@/src/paths';
-import { findMainVideo, findReelVideos } from '@/lib/videos';
+import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/lib/videos';
 
 export const runtime = 'nodejs';
 
@@ -47,6 +47,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     script,
     metadata,
     config: savedConfig,                  // null until the user changes settings
+    thumbnailExists: hasThumbnail(name),
+    audioExists: hasAudio(name),
     videoExists: findMainVideo(name) !== null,
     reelScripts,                          // [] until extracted
     reelsCount: findReelVideos(name).length,

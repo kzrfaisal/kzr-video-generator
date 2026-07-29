@@ -31,6 +31,25 @@ export function cleanTmp(): void {
   fs.mkdirSync('tmp');
 }
 
+/**
+ * Retry a promise-returning call on transient failures (rate limits, 5xx, network) with
+ * exponential backoff. OpenAI occasionally returns 500s; one blip shouldn't fail a stage.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, label = 'request', maxAttempts = 4): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const status = err?.status;
+      const retryable = status === undefined || status === 429 || status >= 500;
+      if (!retryable || attempt >= maxAttempts) throw err;
+      const waitMs = 1000 * 2 ** (attempt - 1); // 1s, 2s, 4s
+      console.warn(`${label} attempt ${attempt}/${maxAttempts} failed (${err.message}); retrying in ${waitMs}ms…`);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+  }
+}
+
 export function waitForEnter(message: string): Promise<void> {
   // No interactive terminal (e.g. spawned by the web UI) — nothing can press ENTER,
   // so continue immediately instead of hanging forever.

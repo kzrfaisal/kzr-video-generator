@@ -8,7 +8,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 
 export type JobStatus = 'running' | 'done' | 'error';
-export type JobKind = 'video' | 'reels';
+export type JobKind = 'audio' | 'video' | 'reels';
 
 export interface Job {
   id: string;
@@ -26,13 +26,24 @@ export interface Job {
 const g = globalThis as unknown as { __jobs?: Map<string, Job> };
 export const jobs: Map<string, Job> = g.__jobs ?? (g.__jobs = new Map());
 
+/** Whether a job's child process actually still exists in the OS (not just per Node's view). */
+function processAlive(j: Job): boolean {
+  const c = j.child;
+  if (!c || c.exitCode !== null || c.killed || !c.pid) return false;
+  try {
+    process.kill(c.pid, 0); // signal 0 = existence probe; throws ESRCH if the process is gone
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The running job, or null. Self-heals: a 'running' job whose process is gone is stale. */
 export function activeJob(): Job | null {
   for (const j of jobs.values()) {
     if (j.status !== 'running') continue;
-    const alive = !!j.child && j.child.exitCode === null && !j.child.killed;
-    if (alive) return j;
-    // Process ended without a close event (e.g. server reload) — don't let it block forever.
+    if (processAlive(j)) return j;
+    // Process ended without a close event (e.g. server reload / orphaned) — unblock it.
     j.status = 'error';
     j.error = j.error ?? 'Render process ended unexpectedly.';
   }

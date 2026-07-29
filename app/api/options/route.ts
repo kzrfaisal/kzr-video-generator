@@ -24,7 +24,7 @@ export async function GET() {
     fonts: listFonts(),
     positions: ['top', 'bottom', 'center'],
     defaults: {
-      voices: { HOST: 'alloy', A: 'echo', B: 'onyx' },
+      voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
       ttsModel: 'tts-1',
       ttsSpeed: 1.0,
       subtitleStyle: 'top-classic',

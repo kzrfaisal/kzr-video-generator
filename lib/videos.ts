@@ -4,7 +4,18 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { publishDir } from '@/src/paths';
+import { publishDir, publishThumbnail } from '@/src/paths';
+
+/** Whether the thumbnail JPG has been rendered. */
+export function hasThumbnail(name: string): boolean {
+  return fs.existsSync(publishThumbnail(name));
+}
+
+/** Whether per-line audio has been generated. */
+export function hasAudio(name: string): boolean {
+  const dir = `output/audios/${name}`;
+  return fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.endsWith('.mp3'));
+}
 
 /** Newest main (landscape) video, or null if none rendered yet. */
 export function findMainVideo(debateName: string): string | null {

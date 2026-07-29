@@ -65,31 +65,45 @@ export async function runMetadataPhase(debateName: string): Promise<void> {
   await generateMetadata(project.topic, project.context ?? '', scriptContent, debateName);
 }
 
-/** Video step: thumbnail → audio → main (landscape) video. No reels. */
-export async function runVideoPhase(
+/** Apply this debate's saved per-run config (voices, TTS, subtitle/video style). */
+function applySavedConfig(debateName: string) {
+  try {
+    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    if (project.config) configureRun(project.config);
+  } catch (err: any) {
+    console.warn(`Could not apply saved config: ${err.message}`);
+  }
+}
+
+/** Thumbnail only — renders the JPG from the metadata hook. */
+export async function runThumbnail(debateName: string): Promise<string> {
+  applySavedConfig(debateName);
+  generateThumbnail(debateName);
+  return publishThumbnail(debateName);
+}
+
+/** Audio only — per-line TTS. Applies the saved voice / TTS config. */
+export async function runAudio(
   debateName: string,
   onStage: (stage: Stage) => void = () => {},
-): Promise<{ videoPath: string; thumbnailPath: string | null }> {
-  onStage('thumbnail');
-  let thumbnailPath: string | null = null;
-  if (config.generateThumbnail) {
-    try {
-      generateThumbnail(debateName);
-      thumbnailPath = publishThumbnail(debateName);
-    } catch (err: any) {
-      console.warn(`Thumbnail generation failed (non-fatal): ${err.message}`);
-    }
-  }
-
+): Promise<void> {
+  applySavedConfig(debateName);
   onStage('audio');
   await generateAudio(debateName);
+  onStage('done');
+}
 
+/** Video render only — builds the landscape video from existing audio. Applies subtitle/style config. */
+export async function runVideoRender(
+  debateName: string,
+  onStage: (stage: Stage) => void = () => {},
+): Promise<string> {
+  applySavedConfig(debateName);
   onStage('video');
   makeVideo(debateName);
   const videoPath = findMainVideo(debateName);
-
   onStage('done');
-  return { videoPath, thumbnailPath };
+  return videoPath;
 }
 
 if (require.main === module) {
@@ -112,22 +126,20 @@ if (require.main === module) {
     if (!debateName) fail('Usage: tsx src/runPipeline.ts metadata <debateName>');
     runMetadataPhase(debateName).then(() => console.log('@@METADATA_DONE@@')).catch(die);
 
+  } else if (sub === 'thumbnail') {
+    const debateName = process.argv[3];
+    if (!debateName) fail('Usage: tsx src/runPipeline.ts thumbnail <debateName>');
+    runThumbnail(debateName).then(p => console.log(`@@THUMB@@ ${p}`)).catch(die);
+
+  } else if (sub === 'audio') {
+    const debateName = process.argv[3];
+    if (!debateName) fail('Usage: tsx src/runPipeline.ts audio <debateName>');
+    runAudio(debateName, emit).catch(die);
+
   } else if (sub === 'video') {
     const debateName = process.argv[3];
     if (!debateName) fail('Usage: tsx src/runPipeline.ts video <debateName>');
-    // Apply any per-run config (voices, TTS, subtitle/video style) saved for this debate.
-    try {
-      const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
-      if (project.config) configureRun(project.config);
-    } catch (err: any) {
-      console.warn(`Could not apply saved config: ${err.message}`);
-    }
-    runVideoPhase(debateName, emit)
-      .then(({ videoPath, thumbnailPath }) => {
-        if (thumbnailPath) console.log(`@@THUMB@@ ${thumbnailPath}`);
-        console.log(`@@RESULT@@ ${videoPath}`);
-      })
-      .catch(die);
+    runVideoRender(debateName, emit).then(v => console.log(`@@RESULT@@ ${v}`)).catch(die);
 
   } else if (sub === 'extract-reels') {
     const debateName = process.argv[3];
@@ -151,6 +163,6 @@ if (require.main === module) {
       .catch(die);
 
   } else {
-    fail('Usage: tsx src/runPipeline.ts <script|metadata|video|extract-reels|reels-build> …');
+    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|audio|video|extract-reels|reels-build> …');
   }
 }

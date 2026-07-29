@@ -14,7 +14,7 @@ async function generateTts(text: string, mp3File: string, voice: string, attempt
   try {
     const response = await client.audio.speech.create({
       model: config.ttsModel as 'tts-1' | 'tts-1-hd',
-      voice: voice as 'alloy' | 'echo' | 'onyx',
+      voice: voice as 'alloy' | 'echo' | 'ash' | 'onyx',
       input: text,
       response_format: 'mp3',
       speed: config.ttsSpeed,

@@ -32,7 +32,7 @@ export async function ensureOutroAudio(partIndex: 0 | 1 | 2): Promise<string> {
   console.log(`Generating cached outro audio: ${mp3File} using ${voice}`);
   const response = await client.audio.speech.create({
     model: config.ttsModel as 'tts-1' | 'tts-1-hd',
-    voice: voice as 'alloy' | 'echo' | 'onyx',
+    voice: voice as 'alloy' | 'echo' | 'ash' | 'onyx',
     input: HOST_OUTRO_TEXT[partIndex],
     response_format: 'mp3',
     speed: config.ttsSpeed,
