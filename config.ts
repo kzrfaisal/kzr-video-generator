@@ -53,7 +53,7 @@ export const STYLES: Record<string, SubtitleStyle> = {
   },
   // Original top-center style (legacy)
   'top-classic': {
-    fontsize: 40, fontcolor: 'white',
+    fontsize: 50, fontcolor: 'white',
     shadowcolor: 'black', shadowx: 2, shadowy: 2,
     position: 'top', margin: 120,
   },
@@ -192,7 +192,7 @@ const baseConfig: Config = {
   },
   font: 'assets/fonts/Segoe UI Italic.ttf',
   subtitleLineHeight: 50,
-  subtitleWrapWidth: 72,
+  subtitleWrapWidth: 78,
 
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -225,7 +225,7 @@ const baseConfig: Config = {
   videoCrf: 18,
   videoPreset: 'slow',
   fps: 30,
-  audioPadding: 0.4,
+  audioPadding: 0.1,
   fadeInDuration: 0.12,
 
   transitionEffect: 'fade',
