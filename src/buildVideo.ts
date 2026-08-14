@@ -91,12 +91,13 @@ function concatWithFade(finalSequence: string[], outputFile: string): void {
 
   const filters: string[] = [];
 
-  // xfade requires both input streams to share a timebase. Single-segment groups
-  // pass through at the codec's native timebase, while groups merged via
-  // `mergeGroup -c copy` get rewritten to the MKV default (1/1000), so they
-  // disagree. Normalize every input video stream to AVTB up front.
+  // xfade requires both inputs to share a frame rate AND a timebase. Depending on the
+  // clip durations, a merged group can end up at a slightly non-integer average fps
+  // (e.g. 13500/451 ≈ 29.93) which makes xfade fail ("frame rates do not match") and
+  // produce a 0-byte file — this hits the short reel segments especially often. Force
+  // every input to a constant fps + AVTB up front.
   for (let i = 0; i < groupClips.length; i++) {
-    filters.push(`[${i}:v]settb=AVTB[vn${i}]`);
+    filters.push(`[${i}:v]fps=${config.fps},settb=AVTB[vn${i}]`);
   }
 
   let vLabel = '[vn0]';

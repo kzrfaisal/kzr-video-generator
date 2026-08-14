@@ -91,6 +91,7 @@ export default function Home() {
   const [useCustom, setUseCustom] = useState(false);
   const [auto, setAuto] = useState(false);
   const [autoStep, setAutoStep] = useState<AutoStep>(null);
+  const [nonstop, setNonstop] = useState(false);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const [previewing, setPreviewing] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -202,53 +203,58 @@ export default function Home() {
   }
 
   // ---- raw steps (composable; used by manual buttons and the auto chain) ----
-  const rawScript = async () => {
+  // Each takes an optional debate name so the non-stop chain can thread it through
+  // synchronously (React state hasn't settled mid-chain). Manual/gated callers omit it
+  // and fall back to the current debate.
+  const rawScript = async (): Promise<string> => {
     if (!topic.trim()) throw new Error('Please enter a topic.');
-    loadDebate(await jsonOrThrow(await fetch('/api/debate', {
+    const data = await jsonOrThrow(await fetch('/api/debate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, context }),
-    })));
+    }));
+    loadDebate(data);
+    return data.debateName as string;
   };
-  const rawSaveScript = async () => {
-    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/script`, {
+  const rawSaveScript = async (name = debate!.debateName) => {
+    await jsonOrThrow(await fetch(`/api/debate/${name}/script`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: editScript }),
     }));
     setDebate(d => (d ? { ...d, script: editScript } : d));
   };
-  const rawMetadata = async () => {
-    const data = await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/metadata`, { method: 'POST' }));
+  const rawMetadata = async (name = debate!.debateName) => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, { method: 'POST' }));
     setEditMetadata(data.metadata);
     setDebate(d => (d ? { ...d, metadata: data.metadata } : d));
   };
-  const saveConfig = async () => {
-    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/config`, {
+  const saveConfig = async (name = debate!.debateName) => {
+    await jsonOrThrow(await fetch(`/api/debate/${name}/config`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config: buildConfigPayload() }),
     }));
   };
-  const rawThumbnail = async () => {
-    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/thumbnail`, { method: 'POST' }));
+  const rawThumbnail = async (name = debate!.debateName) => {
+    await jsonOrThrow(await fetch(`/api/debate/${name}/thumbnail`, { method: 'POST' }));
     setDebate(d => (d ? { ...d, thumbnailExists: true } : d));
     setNonce(n => n + 1);
   };
-  const rawAudio = async () => {
-    await saveConfig(); // voices / TTS model / speed
-    await startJobAndWait(`/api/debate/${debate!.debateName}/audio`, 'audio', debate!.debateName);
+  const rawAudio = async (name = debate!.debateName) => {
+    await saveConfig(name); // voices / TTS model / speed
+    await startJobAndWait(`/api/debate/${name}/audio`, 'audio', name);
   };
-  const rawVideoRender = async () => {
-    await saveConfig(); // subtitle / video style
-    await startJobAndWait(`/api/debate/${debate!.debateName}/video`, 'video', debate!.debateName);
+  const rawVideoRender = async (name = debate!.debateName) => {
+    await saveConfig(name); // subtitle / video style
+    await startJobAndWait(`/api/debate/${name}/video`, 'video', name);
   };
-  const rawExtract = async () => {
-    const data = await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/extract-reels`, { method: 'POST' }));
+  const rawExtract = async (name = debate!.debateName) => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${name}/extract-reels`, { method: 'POST' }));
     setEditReels(data.parts);
     setDebate(d => (d ? { ...d, reelScripts: data.parts } : d));
   };
-  const rawReels = async () => startJobAndWait(`/api/debate/${debate!.debateName}/reels`, 'reels', debate!.debateName);
+  const rawReels = async (name = debate!.debateName) => startJobAndWait(`/api/debate/${name}/reels`, 'reels', name);
 
   // ---- manual buttons ----
-  const generateScript = () => call('script', rawScript);
+  const generateScript = () => call('script', async () => { await rawScript(); });
   const saveScript = () => call('save-script', rawSaveScript);
   const generateMetadata = () => call('metadata', rawMetadata);
   const saveMetadata = () => call('save-metadata', async () => {
@@ -272,11 +278,33 @@ export default function Home() {
   const generateReels = () => call('reels', rawReels);
 
   // ---- auto ("Generate all") ----
-  const generateAll = () => call('script', async () => {
-    await rawScript();
-    setAuto(true);
-    setAutoStep('awaiting-script');
-  });
+  const generateAll = () => {
+    if (nonstop) {
+      // Run the entire pipeline end-to-end with no review pauses. The name is threaded
+      // through each step so it doesn't depend on React state settling between calls.
+      call('auto', async () => {
+        setAuto(true); setAutoStep('running');
+        const name = await rawScript();
+        await rawMetadata(name);
+        await rawThumbnail(name);
+        await rawAudio(name);
+        await rawVideoRender(name);
+        try {
+          await rawExtract(name);
+          await rawReels(name);
+        } catch (e) {
+          setError(`Video is done. Reels step failed: ${e instanceof Error ? e.message : ''}`);
+        }
+        setAuto(false); setAutoStep(null);
+      });
+    } else {
+      call('script', async () => {
+        await rawScript();
+        setAuto(true);
+        setAutoStep('awaiting-script');
+      });
+    }
+  };
 
   async function continueAfterScript() {
     setError(''); setBusy('auto'); setAutoStep('running');
@@ -362,14 +390,20 @@ export default function Home() {
                   placeholder="Optional framing or a real event to anchor the debate…"
                   disabled={working || !!debate} />
         {!debate && (
-          <div className="row">
-            <button onClick={generateScript} disabled={working}>
-              {busy === 'script' && !auto ? 'Generating…' : 'Generate script'}
-            </button>
-            <button className="btn-secondary" onClick={generateAll} disabled={working || renderElsewhere}>
-              {busy === 'script' && auto ? 'Generating…' : 'Generate all'}
-            </button>
-          </div>
+          <>
+            <div className="row">
+              <button onClick={generateScript} disabled={working}>
+                {busy === 'script' && !auto ? 'Generating…' : 'Generate script'}
+              </button>
+              <button className="btn-secondary" onClick={generateAll} disabled={working || renderElsewhere}>
+                {(busy === 'auto' || (busy === 'script' && auto)) ? 'Generating…' : 'Generate all'}
+              </button>
+            </div>
+            <label className="check">
+              <input type="checkbox" checked={nonstop} onChange={e => setNonstop(e.target.checked)} disabled={working} />
+              Non-stop — with “Generate all”, run everything with no review pauses
+            </label>
+          </>
         )}
       </section>
 

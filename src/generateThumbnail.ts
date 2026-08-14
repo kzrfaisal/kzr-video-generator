@@ -20,15 +20,18 @@ function readHookFromMetadata(debateName: string): string {
   }
   const md = fs.readFileSync(mdPath, 'utf-8');
   // Capture everything between '## Thumbnail Hook' and the next '## ' heading (or EOF).
-  const match = md.match(/^##\s+Thumbnail Hook\s*\n([\s\S]*?)(?=\n##\s|$)/m);
+  // No /m flag: with it, `$` would match end-of-LINE and truncate a multi-line hook.
+  const match = md.match(/(?:^|\n)##\s+Thumbnail Hook[ \t]*\n([\s\S]*?)(?=\n##\s|$)/);
   if (!match) {
     throw new Error(`'## Thumbnail Hook' section missing from ${mdPath}.`);
   }
-  const hook = match[1].trim().split('\n')[0].trim();
-  if (!hook) {
+  // Preserve the author's line breaks (up to 2 non-empty lines) so a two-line hook
+  // in the metadata is followed as written.
+  const lines = match[1].trim().split('\n').map(l => l.trim()).filter(l => l.length > 0).slice(0, 2);
+  if (lines.length === 0) {
     throw new Error(`'## Thumbnail Hook' section is empty in ${mdPath}.`);
   }
-  return hook;
+  return lines.join('\n');
 }
 
 export function generateThumbnail(debateName: string): void {
@@ -53,45 +56,57 @@ export function generateThumbnail(debateName: string): void {
      .replace(/%/g, '\\\\%');
   const labelText = escapeInline('DEBATE');
 
-  // Fit the hook on ONE line: shrink the font if the configured size would overflow.
-  // Wrap only in the extreme case where even HOOK_MIN_FONT wouldn't fit.
+  // Decide the lines to render and the font size:
+  //  - multiple lines in the hook → follow them, sized to the WIDEST line;
+  //  - single line → auto-fit (shrink; wrap only if it can't fit even at the minimum size).
   const baseSize = tf.hook.size;
-  const fitFont = Math.floor(HOOK_USABLE_W / (hook.length * HOOK_CHAR_K));
-  let hookSize = baseSize;
-  let hookRendered = hook;
-  if (fitFont < baseSize) {
-    if (fitFont >= HOOK_MIN_FONT) {
-      hookSize = fitFont;                    // smaller, still one line
-    } else {
-      hookSize = HOOK_MIN_FONT;              // very long → wrap to fit the min size
+  const givenLines = hook.split('\n');
+  let hookSize: number;
+  let hookLines: string[];
+  if (givenLines.length > 1) {
+    hookLines = givenLines;
+    const longest = Math.max(...givenLines.map(l => l.length));
+    const fit = Math.floor(HOOK_USABLE_W / (longest * HOOK_CHAR_K));
+    hookSize = Math.min(baseSize, Math.max(HOOK_MIN_FONT, fit));
+  } else {
+    const fit = Math.floor(HOOK_USABLE_W / (hook.length * HOOK_CHAR_K));
+    if (fit >= baseSize) { hookSize = baseSize; hookLines = [hook]; }
+    else if (fit >= HOOK_MIN_FONT) { hookSize = fit; hookLines = [hook]; }
+    else {
+      hookSize = HOOK_MIN_FONT;
       const wrapChars = Math.max(8, Math.floor(HOOK_USABLE_W / (HOOK_MIN_FONT * HOOK_CHAR_K)));
-      hookRendered = wrapText(hook, wrapChars).join('\n');
+      hookLines = wrapText(hook, wrapChars);
     }
   }
-  // Render from a file (avoids inline text escaping and handles the rare multi-line case).
-  ensureDir('tmp');
-  const hookFile = path.resolve(`tmp/thumb_hook_${debateName.replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`);
-  fs.writeFileSync(hookFile, hookRendered, 'utf-8');
 
-  // Fake "glow" on the hook: stack drawtext passes with widening borders + fading alpha,
-  // then draw the solid fill on top. ffmpeg has no real blur, so this halo is the closest approximation.
-  // Tune `glowColor` and the {w, a} list to adjust intensity / spread / hue.
-  const glowColor = '0xFFFFFF'; // white
-  const haloPasses = [
-    { w: 8, a: 0.10 },
-    { w: 4, a: 0.20 },
-  ];
-  const hookBase = `fontfile=${fontfile}:textfile=${hookFile}:fontsize=${hookSize}:x=${tf.hook.x}:y=${tf.hook.y}`;
-  const hookGlow = haloPasses.map(p =>
-    `drawtext=${hookBase}:fontcolor=${glowColor}@${p.a}:borderw=${p.w}:bordercolor=${glowColor}@${p.a}`
-  );
+  // Fake "glow": stacked drawtext passes (widening borders + fading alpha), fill on top.
+  const glowColor = '0xFFFFFF';
+  const haloPasses = [{ w: 8, a: 0.10 }, { w: 4, a: 0.20 }];
+
+  // Render each line as its OWN centered drawtext — one line per file, so there's no
+  // newline-in-textfile artifact, and every line is individually centered. Lines stack and
+  // stay vertically centered around tf.hook.y.
+  ensureDir('tmp');
+  const safeName = debateName.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const N = hookLines.length;
+  const lineHeight = Math.round(hookSize * 1.2);
+  const hookFilters: string[] = [];
+  hookLines.forEach((line, i) => {
+    const lineFile = path.resolve(`tmp/thumb_hook_${safeName}_${i}.txt`);
+    fs.writeFileSync(lineFile, line, 'utf-8');
+    const yOff = Math.round((i - (N - 1) / 2) * lineHeight);
+    const base = `fontfile=${fontfile}:textfile=${lineFile}:fontsize=${hookSize}:x=${tf.hook.x}:y=(${tf.hook.y})+(${yOff})`;
+    for (const p of haloPasses) {
+      hookFilters.push(`drawtext=${base}:fontcolor=${glowColor}@${p.a}:borderw=${p.w}:bordercolor=${glowColor}@${p.a}`);
+    }
+    hookFilters.push(`drawtext=${base}:fontcolor=${tf.hook.color}`);
+  });
 
   const filter = [
     `scale=${THUMB_W}:${THUMB_H}:force_original_aspect_ratio=decrease`,
     `pad=${THUMB_W}:${THUMB_H}:(ow-iw)/2:(oh-ih)/2:black`,
     `drawtext=fontfile=${fontfile}:text=${labelText}:fontcolor=${tf.label.color}:fontsize=${tf.label.size}:x=${tf.label.x}:y=${tf.label.y}`,
-    ...hookGlow,
-    `drawtext=${hookBase}:fontcolor=${tf.hook.color}`,
+    ...hookFilters,
   ].join(',');
 
   ensureDir(publishDir(debateName));
