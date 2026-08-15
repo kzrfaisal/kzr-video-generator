@@ -21,8 +21,9 @@ import { buildReelsFromParts } from './makeReels';
 import { parseContextFlag } from './utils';
 import { config, configureRun } from '../config';
 import { publishDir, publishThumbnail, scriptPath, projectPath, reelsPartsPath } from './paths';
+import { publishAll, type PublishTarget } from './publish/publishAll';
 
-export type Stage = 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'done';
+export type Stage = 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
 
 /** Newest final video for this debate, ignoring `_partN` reel files. */
 function findMainVideo(debateName: string): string {
@@ -162,7 +163,21 @@ if (require.main === module) {
       })
       .catch(die);
 
+  } else if (sub === 'publish') {
+    const debateName = process.argv[3];
+    if (!debateName) fail('Usage: tsx src/runPipeline.ts publish <debateName>');
+    const targetArg = process.argv.find(arg => arg.startsWith('--target='));
+    const target = (targetArg?.slice('--target='.length) || 'all') as PublishTarget;
+    if (!['youtube', 'instagram', 'all'].includes(target)) fail('Publish target must be youtube, instagram, or all.');
+    emit('publishing');
+    publishAll(debateName, target)
+      .then(record => {
+        console.log(`@@PUBLISH@@ ${JSON.stringify(record)}`);
+        emit('done');
+      })
+      .catch(die);
+
   } else {
-    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|audio|video|extract-reels|reels-build> …');
+    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|audio|video|extract-reels|reels-build|publish> …');
   }
 }

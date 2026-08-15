@@ -8,7 +8,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 
 export type JobStatus = 'running' | 'done' | 'error';
-export type JobKind = 'audio' | 'video' | 'reels';
+export type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 
 export interface Job {
   id: string;
@@ -45,7 +45,7 @@ export function activeJob(): Job | null {
     if (processAlive(j)) return j;
     // Process ended without a close event (e.g. server reload / orphaned) — unblock it.
     j.status = 'error';
-    j.error = j.error ?? 'Render process ended unexpectedly.';
+    j.error = j.error ?? 'Background process ended unexpectedly.';
   }
   return null;
 }

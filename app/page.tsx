@@ -32,6 +32,16 @@ interface Options {
   positions: string[];
 }
 
+interface PublishState {
+  status: 'publishing' | 'complete' | 'error';
+  youtube: {
+    main?: { videoId: string; url: string; publishedAt: string };
+    shorts: Array<{ part: number; videoId: string; url: string; publishedAt: string }>;
+  };
+  instagram?: Array<{ part: number; mediaId: string; url?: string; publishedAt: string }>;
+  error?: string;
+}
+
 interface Debate {
   debateName: string;
   topic: string;
@@ -44,9 +54,12 @@ interface Debate {
   videoExists: boolean;
   reelScripts: ReelScript[];
   reelsCount: number;
+  publishing: PublishState | null;
 }
 
-interface JobView { id: string; kind: 'audio' | 'video' | 'reels'; stage: string; status: string; error?: string; }
+type PublishTarget = 'youtube' | 'instagram' | 'all';
+type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
+interface JobView { id: string; kind: JobKind; stage: string; status: string; error?: string; }
 
 // Auto ("Generate all") pauses at two gates: after the script, and after the reel scripts.
 type AutoStep = null | 'awaiting-script' | 'running' | 'awaiting-reels';
@@ -131,6 +144,7 @@ export default function Home() {
       videoExists: d.videoExists ?? false,
       reelScripts: d.reelScripts ?? [],
       reelsCount: d.reelsCount ?? 0,
+      publishing: d.publishing ?? null,
     };
     setDebate(norm);
     setTopic(norm.topic);
@@ -170,8 +184,14 @@ export default function Home() {
 
   // Start a long job and resolve when it finishes (rejecting on error). Updates progress
   // and reloads the debate on completion. Used by both manual buttons and the auto chain.
-  async function startJobAndWait(startUrl: string, kind: 'audio' | 'video' | 'reels', name: string) {
-    const { jobId } = await jsonOrThrow(await fetch(startUrl, { method: 'POST' }));
+  async function startJobAndWait(startUrl: string, kind: JobKind, name: string, requestBody?: unknown) {
+    const { jobId } = await jsonOrThrow(await fetch(startUrl, {
+      method: 'POST',
+      ...(requestBody === undefined ? {} : {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      }),
+    }));
     setJob({ id: jobId, kind, stage: kind, status: 'running' });
     await new Promise<void>((resolve, reject) => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -252,6 +272,15 @@ export default function Home() {
     setDebate(d => (d ? { ...d, reelScripts: data.parts } : d));
   };
   const rawReels = async (name = debate!.debateName) => startJobAndWait(`/api/debate/${name}/reels`, 'reels', name);
+  const rawPublish = async (target: PublishTarget, name = debate!.debateName) => {
+    const readiness = await jsonOrThrow(await fetch(`/api/publish-readiness?platform=${target}`));
+    if (!readiness.ready) {
+      throw new Error(`Set up ${target} publishing in .env first. Missing: ${readiness.missing.join(', ')}`);
+    }
+    const kind: JobKind = target === 'all' ? 'publish' : `publish-${target}`;
+    try { await startJobAndWait(`/api/debate/${name}/publish`, kind, name, { target }); }
+    finally { await refetchDebate(name); }
+  };
 
   // ---- manual buttons ----
   const generateScript = () => call('script', async () => { await rawScript(); });
@@ -276,6 +305,24 @@ export default function Home() {
     setDebate(d => (d ? { ...d, reelScripts: d.reelScripts.map(r => r.part === part ? { part, script } : r) } : d));
   });
   const generateReels = () => call('reels', rawReels);
+  const publishYouTube = () => call('publish-youtube', async () => rawPublish('youtube'));
+  const publishInstagram = () => call('publish-instagram', async () => rawPublish('instagram'));
+
+  const generateAndPublish = () => call('auto-publish', async () => {
+    setAuto(true); setAutoStep('running');
+    try {
+      const name = await rawScript();
+      await rawMetadata(name);
+      await rawThumbnail(name);
+      await rawAudio(name);
+      await rawVideoRender(name);
+      await rawExtract(name);
+      await rawReels(name);
+      await rawPublish('all', name);
+    } finally {
+      setAuto(false); setAutoStep(null);
+    }
+  });
 
   // ---- auto ("Generate all") ----
   const generateAll = () => {
@@ -359,6 +406,9 @@ export default function Home() {
   const working = busy !== '' || job !== null;
   const name = debate?.debateName;
   const cs = cfg.customSubtitle ?? DEFAULT_CUSTOM;
+  const youtubePublished = !!debate?.publishing?.youtube?.main
+    && (debate.publishing.youtube.shorts?.length ?? 0) === 3;
+  const instagramPublished = (debate?.publishing?.instagram?.length ?? 0) === 3;
   // A render running on some OTHER debate (our own render is already shown via `job`).
   const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
 
@@ -381,8 +431,8 @@ export default function Home() {
 
       {/* 1 — Topic */}
       <section className="panel">
-        <h2 className="step-title">1 · Topic</h2>
-        <label htmlFor="topic">Topic</label>
+        <h2 className="step-title">1 · Title and context</h2>
+        <label htmlFor="topic">Debate title/topic</label>
         <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
                placeholder="e.g. AI replacing teachers" disabled={working || !!debate} />
         <label htmlFor="context">Context <span className="optional">(optional)</span></label>
@@ -392,6 +442,9 @@ export default function Home() {
         {!debate && (
           <>
             <div className="row">
+              <button onClick={generateAndPublish} disabled={working || renderElsewhere}>
+                {busy === 'auto-publish' ? 'Creating & publishing…' : 'Create & publish everything'}
+              </button>
               <button onClick={generateScript} disabled={working}>
                 {busy === 'script' && !auto ? 'Generating…' : 'Generate script'}
               </button>
@@ -635,6 +688,48 @@ export default function Home() {
                 )}
               </>
             )}
+          </section>
+
+          {/* 6 — Publish */}
+          <section className="panel">
+            <h2 className="step-title">6 · Publish</h2>
+            <p className="review-note">1 main video + 3 Shorts → YouTube · 3 Reels → Instagram</p>
+            {(job?.kind === 'publish' || job?.kind === 'publish-youtube') && <p className="review-note">Uploading to YouTube…</p>}
+            {(job?.kind === 'publish' || job?.kind === 'publish-instagram') && <p className="review-note">Publishing to Instagram…</p>}
+            {debate.publishing?.status === 'error' && debate.publishing.error && (
+              <div className="error">Publishing failed: {debate.publishing.error}</div>
+            )}
+            {debate.publishing?.youtube?.main && (
+              <p><a href={debate.publishing.youtube.main.url} target="_blank" rel="noreferrer">Open YouTube video</a></p>
+            )}
+            {debate.publishing?.youtube?.shorts?.map(item => (
+              <p key={item.part}>
+                <a href={item.url} target="_blank" rel="noreferrer">Open YouTube Short {item.part}</a>
+              </p>
+            ))}
+            {debate.publishing?.instagram?.map(item => (
+              <p key={`instagram-${item.part}`}>
+                {item.url
+                  ? <a href={item.url} target="_blank" rel="noreferrer">Open Instagram Reel {item.part}</a>
+                  : `Instagram Reel ${item.part} published (${item.mediaId})`}
+              </p>
+            ))}
+            <div className="row">
+              <button onClick={publishYouTube}
+                      disabled={working || renderElsewhere || !debate.videoExists || debate.reelsCount !== 3 || youtubePublished}>
+                {job?.kind === 'publish-youtube' ? 'Publishing YouTube…' : youtubePublished ? 'YouTube published' : 'Publish to YouTube'}
+              </button>
+              <button onClick={publishInstagram}
+                      disabled={working || renderElsewhere || debate.reelsCount !== 3 || instagramPublished}>
+                {job?.kind === 'publish-instagram'
+                  ? 'Publishing Instagram…'
+                  : instagramPublished
+                    ? 'Instagram published'
+                    : debate.publishing?.status === 'error'
+                      ? 'Retry Instagram'
+                      : 'Publish to Instagram'}
+              </button>
+            </div>
           </section>
         </>
       )}

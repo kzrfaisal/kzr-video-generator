@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { isValidDebateName } from '@/lib/stage';
-import { scriptPath, publishMetadata, projectPath, reelPartScriptPath } from '@/src/paths';
+import { scriptPath, publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/paths';
 import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/lib/videos';
 
 export const runtime = 'nodejs';
@@ -19,6 +19,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   const script = fs.readFileSync(scriptPath(name), 'utf-8');
   const mdPath = publishMetadata(name);
   const metadata = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, 'utf-8') : null;
+  let publishing = null;
+  const publishPath = publishRecordPath(name);
+  if (fs.existsSync(publishPath)) {
+    try { publishing = JSON.parse(fs.readFileSync(publishPath, 'utf-8')); }
+    catch { /* ignore a corrupt publishing receipt */ }
+  }
 
   let topic = '';
   let context = '';
@@ -52,5 +58,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     videoExists: findMainVideo(name) !== null,
     reelScripts,                          // [] until extracted
     reelsCount: findReelVideos(name).length,
+    publishing,
   });
 }

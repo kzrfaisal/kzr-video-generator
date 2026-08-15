@@ -55,3 +55,9 @@ export function publishThumbnail(name: string): string {
   const parent = parentName(name);
   return `output/publish/${parent}/${parent}.thumbnail.jpg`;
 }
+
+/** Persistent receipt for social uploads. Used to make publish retries idempotent. */
+export function publishRecordPath(name: string): string {
+  const parent = parentName(name);
+  return `output/publish/${parent}/${parent}.publish.json`;
+}

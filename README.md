@@ -17,6 +17,24 @@ Create a `.env` file with your OpenAI API key:
 OPENAI_API_KEY=sk-...
 ```
 
+## Local web app and automatic publishing
+
+Start the app on the laptop:
+
+```bash
+npm run next:dev
+```
+
+Open `http://localhost:3000`, enter a debate title/topic and context, then click **Create & publish everything**. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. It uploads one main video and three Shorts to YouTube, then publishes the three portrait videos as Instagram Reels. Upload receipts are saved beside the videos, so retrying skips posts that already succeeded.
+
+One-time social account setup:
+
+1. In Google Cloud, enable the YouTube Data API, create an OAuth web client, authorize the `https://www.googleapis.com/auth/youtube.upload` scope, and put its client ID, client secret, and refresh token in `.env`.
+2. Use a professional Instagram account linked to a Facebook Page. Create a Meta Business app, authorize `pages_show_list`, `instagram_basic`, `instagram_content_publish`, and `pages_read_engagement`, then put the Instagram professional account ID and Facebook Page access token in `.env`.
+3. Copy the publishing settings from `.env.example`. Set `YOUTUBE_PRIVACY_STATUS=public` when your API project is approved for automatic public YouTube posts; the safer default is `private`.
+
+Videos upload directly from the laptop to YouTube and Meta. No Cloudflare R2 or other storage service is used.
+
 ---
 
 ## Full Pipeline
