@@ -22,8 +22,9 @@ import { parseContextFlag } from './utils';
 import { config, configureRun } from '../config';
 import { publishDir, publishThumbnail, scriptPath, projectPath, reelsPartsPath } from './paths';
 import { publishAll, type PublishTarget } from './publish/publishAll';
+import { generateVisualScenes } from './visualScenes';
 
-export type Stage = 'script' | 'thumbnail' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
+export type Stage = 'script' | 'thumbnail' | 'visuals' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
 
 /** Newest final video for this debate, ignoring `_partN` reel files. */
 function findMainVideo(debateName: string): string {
@@ -148,6 +149,17 @@ if (require.main === module) {
     if (!debateName) fail('Usage: tsx src/runPipeline.ts audio <debateName>');
     runAudio(debateName, emit).catch(die);
 
+  } else if (sub === 'visuals') {
+    const debateName = process.argv[3];
+    if (!debateName) fail('Usage: tsx src/runPipeline.ts visuals <debateName>');
+    emit('visuals');
+    generateVisualScenes(debateName)
+      .then(plan => {
+        console.log(`@@VISUALS@@ ${plan.scenes.filter(scene => scene.imagePath).length}/${plan.scenes.length}`);
+        emit('done');
+      })
+      .catch(die);
+
   } else if (sub === 'video') {
     const debateName = process.argv[3];
     if (!debateName) fail('Usage: tsx src/runPipeline.ts video <debateName>');
@@ -190,6 +202,6 @@ if (require.main === module) {
       .catch(die);
 
   } else {
-    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|audio|video|extract-reels|reels-build|publish> …');
+    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|visuals|audio|video|extract-reels|reels-build|publish> …');
   }
 }

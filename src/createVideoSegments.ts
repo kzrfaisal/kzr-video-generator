@@ -5,6 +5,7 @@ import { ensureDir, wrapText, parseDebateFile } from './utils';
 import { config, STYLES, SubtitleStyle } from '../config';
 import { publishMetadata } from './paths';
 import { createInfographicOverlay } from './infographic';
+import { visualSceneForLine } from './visualScenes';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -92,6 +93,36 @@ function buildAudioFilter(startPadSec: number, endPadSec: number): string {
   return filters.join(',');
 }
 
+function audioDuration(file: string): number {
+  const result = spawnSync('ffprobe', [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    file,
+  ], { encoding: 'utf-8' });
+  if (result.status !== 0) throw new Error(`ffprobe failed for ${file}`);
+  return Number.parseFloat(result.stdout.trim());
+}
+
+/** Slow, eased zoom-out with a diagonal drift across an oversized source. */
+function photoMotionFilter(portrait: boolean, lineIndex: number, elapsedSec: number): string {
+  const offset = Math.max(0, Math.round(elapsedSec * config.fps));
+  const easeFrames = config.fps * 18;
+  const ease = `(0.5-0.5*cos(PI*min((on+${offset})/${easeFrames}\\,1)))`;
+  const zoom = `1.08-0.08*${ease}`;
+  const leftToRight = Math.floor(lineIndex / 3) % 2 === 0;
+  const xFactor = leftToRight ? `0.18+0.52*${ease}` : `0.82-0.52*${ease}`;
+  const yFactor = leftToRight ? `0.22+0.42*${ease}` : `0.70-0.40*${ease}`;
+  const canvas = portrait ? '4320:7680' : '7680:4320';
+  const output = portrait ? '1080x1920' : '1920x1080';
+  return [
+    `scale=${canvas}:force_original_aspect_ratio=increase`,
+    `crop=${canvas}:x=(in_w-out_w)/2:y=(in_h-out_h)/2`,
+    `zoompan=z='${zoom}':x='(iw-iw/zoom)*(${xFactor})':y='(ih-ih/zoom)*(${yFactor})':d=99999:s=${output}:fps=${config.fps}`,
+    'setsar=1',
+  ].join(',');
+}
+
 export function createSegment(
   speaker: string,
   debateName: string,
@@ -105,6 +136,9 @@ export function createSegment(
   startPadSec: number,
   endPadSec: number,
   bannerText: string,
+  photoMode = false,
+  sceneHeadline?: string,
+  motionOffsetSec = 0,
 ): void {
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
@@ -117,15 +151,23 @@ export function createSegment(
   });
 
   const allFilters: string[] = [
-    config.isReelStyle
-      ? 'scale=1080:1920,setsar=1'
-      : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
+    photoMode
+      ? photoMotionFilter(config.isReelStyle, lineIndex, motionOffsetSec)
+      : config.isReelStyle
+        ? 'scale=1080:1920,setsar=1'
+        : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
   ];
 
+  if (photoMode) {
+    // Preserve the photo's colour while giving white typography a little more
+    // separation. This replaces the previous large grey masks.
+    allFilters.push('eq=contrast=1.04:brightness=-0.025:saturation=1.08');
+  }
+
   const infographic = config.visualMode === 'infographic'
-    ? createInfographicOverlay(
-        debateName, speaker, text, lineIndex, lineCount, config.isReelStyle,
-        outputBase, config.bannerFont.font,
+      ? createInfographicOverlay(
+        debateName, speaker, text, config.isReelStyle,
+        outputBase, config.bannerFont.font, photoMode, sceneHeadline,
       )
     : { filters: [], tempFiles: [] };
   allFilters.push(...infographic.filters);
@@ -191,7 +233,8 @@ export function createSegment(
 
   const args = [
     '-y',
-    '-loop', '1', '-i', image,
+    ...(!photoMode ? ['-loop', '1'] : []),
+    '-i', image,
     '-i', audio,
     '-vf', allFilters.join(','),
     '-af', buildAudioFilter(startPadSec, endPadSec),
@@ -233,6 +276,7 @@ export function run(debateName: string): void {
   const fadeEnabled = config.transitionStyle === 'fade' || config.transitionStyle === 'fade-pcm';
   const segmentExt = config.transitionStyle === 'fade-pcm' ? 'mkv' : 'mp4';
   const D = config.transitionDuration;
+  const sceneElapsed = new Map<string, number>();
 
   files.forEach((file: string, idx: number) => {
     const speaker = speakerOf(file);
@@ -248,16 +292,31 @@ export function run(debateName: string): void {
 
     const text = lines[idx].text;
     const { styleName, image } = resolveStyleAndImage(speaker);
-    const sceneImage = config.visualMode === 'infographic'
-      ? (config.isReelStyle ? 'assets/images/image_H_style3.png' : 'assets/images/image_H_style2.png')
-      : image;
+    const plannedScene = config.visualMode === 'infographic' ? visualSceneForLine(debateName, idx) : null;
+    const hasScenePhoto = !!plannedScene?.imagePath && fs.existsSync(plannedScene.imagePath);
+    const sceneImage = hasScenePhoto
+      ? plannedScene!.imagePath!
+      : config.visualMode === 'infographic'
+        ? (config.isReelStyle ? 'assets/images/image_H_style3.png' : 'assets/images/image_H_style2.png')
+        : image;
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
+    const sceneKey = plannedScene?.id ?? `line-${idx}`;
+    const motionOffsetSec = sceneElapsed.get(sceneKey) ?? 0;
 
     console.log(`Creating segment for ${file}`);
     createSegment(
       speaker, debateName, idx, files.length, sceneImage, audioPath, text,
       segmentPath, styleName, startPadSec, endPadSec, bannerText,
+      hasScenePhoto, plannedScene?.headline, motionOffsetSec,
+    );
+    // xfade overlaps the outgoing and incoming clips. Move the next clip's
+    // camera clock back by that overlap so the photo stays pixel-aligned while
+    // the speaker label and subtitles dissolve between each other.
+    const overlapToNext = fadeEnabled && nextSpeaker !== null && nextSpeaker !== speaker ? D : 0;
+    sceneElapsed.set(
+      sceneKey,
+      motionOffsetSec + startPadSec + audioDuration(audioPath) + endPadSec - overlapToNext,
     );
   });
 }

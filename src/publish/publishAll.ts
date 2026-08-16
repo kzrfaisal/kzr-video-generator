@@ -4,6 +4,7 @@ import { publishDir, publishMetadata, publishRecordPath, publishThumbnail } from
 import { parseSocialMetadata } from './metadata';
 import { uploadToYouTube } from './youtube';
 import { uploadInstagramReel } from './instagram';
+import { readVisualPlan } from '../visualScenes';
 
 interface YouTubeReceipt {
   videoId: string;
@@ -71,6 +72,16 @@ function saveRecord(record: PublishRecord) {
   fs.writeFileSync(publishRecordPath(record.debateName), JSON.stringify(record, null, 2), 'utf-8');
 }
 
+function pexelsCredits(debateName: string): string {
+  const sources = readVisualPlan(debateName)?.scenes.flatMap(scene => scene.source ? [scene.source] : []) ?? [];
+  if (sources.length === 0) return '';
+  const unique = [...new Map(sources.map(source => [source.photoId, source])).values()];
+  return [
+    'Visuals provided by Pexels: https://www.pexels.com',
+    ...unique.map(source => `Photo by ${source.photographer}: ${source.photoUrl}`),
+  ].join('\n');
+}
+
 export async function publishAll(debateName: string, target: PublishTarget = 'all'): Promise<PublishRecord> {
   const metadata = parseSocialMetadata(fs.readFileSync(publishMetadata(debateName), 'utf-8'));
   const mainVideo = newestMainVideo(debateName);
@@ -84,6 +95,7 @@ export async function publishAll(debateName: string, target: PublishTarget = 'al
   record.status = 'publishing';
   delete record.error;
   saveRecord(record);
+  const visualCredits = pexelsCredits(debateName);
 
   try {
     if (target === 'youtube' || target === 'all') {
@@ -94,7 +106,7 @@ export async function publishAll(debateName: string, target: PublishTarget = 'al
           videoPath: mainVideo,
           thumbnailPath: publishThumbnail(debateName),
           title: metadata.youtubeTitle,
-          description: `${metadata.youtubeDescription}\n\n${metadata.hashtags}`.trim(),
+          description: `${metadata.youtubeDescription}\n\n${metadata.hashtags}${visualCredits ? `\n\n${visualCredits}` : ''}`.trim(),
           tags,
         });
         record.youtube.main = { ...result, publishedAt: new Date().toISOString() };
@@ -110,7 +122,7 @@ export async function publishAll(debateName: string, target: PublishTarget = 'al
         const result = await uploadToYouTube({
           videoPath: reel.file,
           title: firstLine || `Part ${reel.part} - ${metadata.youtubeTitle}`,
-          description: caption,
+          description: `${caption}${visualCredits ? '\n\nVisuals provided by Pexels: https://www.pexels.com' : ''}`,
           tags,
         });
         record.youtube.shorts.push({ part: reel.part, ...result, publishedAt: new Date().toISOString() });
@@ -125,7 +137,8 @@ export async function publishAll(debateName: string, target: PublishTarget = 'al
       for (const reel of reels) {
         if (record.instagram.some(item => item.part === reel.part)) continue;
         console.log(`Publishing Instagram Reel ${reel.part}/3…`);
-        const result = await uploadInstagramReel(reel.file, metadata.reelCaptions[reel.part - 1]);
+        const caption = `${metadata.reelCaptions[reel.part - 1]}${visualCredits ? '\n\nVisuals provided by Pexels.' : ''}`;
+        const result = await uploadInstagramReel(reel.file, caption);
         record.instagram.push({ part: reel.part, ...result, publishedAt: new Date().toISOString() });
         record.instagram.sort((a, b) => a.part - b.part);
         saveRecord(record);

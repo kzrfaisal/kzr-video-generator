@@ -4,6 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 
 interface ReelScript { part: number; script: string; }
 
+interface VisualScene {
+  id: string;
+  headline: string;
+  searchQuery: string;
+  imagePath?: string;
+  error?: string;
+  source?: {
+    photographer: string;
+    photographerUrl: string;
+    photoUrl: string;
+  };
+}
+
 interface CustomSubtitle {
   position?: string;
   font?: string;
@@ -59,7 +72,7 @@ interface Debate {
 }
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
-type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
+type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 interface JobView { id: string; kind: JobKind; stage: string; status: string; logs?: string[]; error?: string; }
 
 interface ProjectSummary {
@@ -72,7 +85,7 @@ interface ProjectSummary {
 }
 
 // Reviewed generation pauses after the script, metadata, and reel scripts.
-type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'running' | 'awaiting-reels';
+type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'awaiting-visuals' | 'running' | 'awaiting-reels';
 
 const LS_KEY = 'activeDebate';
 const DEFAULT_CFG: RunConfig = {
@@ -117,6 +130,8 @@ export default function Home() {
   const [autoStep, setAutoStep] = useState<AutoStep>(null);
   const [nonstop, setNonstop] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [visualScenes, setVisualScenes] = useState<VisualScene[]>([]);
+  const [visualsConfigured, setVisualsConfigured] = useState(true);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const [previewing, setPreviewing] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -133,11 +148,24 @@ export default function Home() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
+  useEffect(() => {
+    if (debate?.debateName) refreshVisuals(debate.debateName);
+    else setVisualScenes([]);
+  }, [debate?.debateName]);
+
   async function refreshProjects() {
     try {
       const data = await jsonOrThrow(await fetch('/api/debate'));
       setProjects(data.projects ?? []);
     } catch { /* the editor remains usable if project history cannot load */ }
+  }
+
+  async function refreshVisuals(debateName: string) {
+    try {
+      const data = await jsonOrThrow(await fetch(`/api/debate/${debateName}/visuals`));
+      setVisualsConfigured(data.configured);
+      setVisualScenes(data.plan?.scenes ?? []);
+    } catch { setVisualScenes([]); }
   }
 
   // Poll whether a render is running anywhere, so we can disable render buttons app-wide.
@@ -188,6 +216,7 @@ export default function Home() {
     if (res.ok) {
       loadDebate(await res.json());
       await refreshProjects();
+      await refreshVisuals(name);
     }
   }
 
@@ -295,6 +324,11 @@ export default function Home() {
     setDebate(d => (d ? { ...d, thumbnailExists: true } : d));
     setNonce(n => n + 1);
   };
+  const rawVisuals = async (name = debate!.debateName) => {
+    await saveConfig(name);
+    try { await startJobAndWait(`/api/debate/${name}/visuals`, 'visuals', name); }
+    finally { await refreshVisuals(name); }
+  };
   const rawAudio = async (name = debate!.debateName) => {
     await saveConfig(name); // voices / TTS model / speed
     await startJobAndWait(`/api/debate/${name}/audio`, 'audio', name);
@@ -325,6 +359,7 @@ export default function Home() {
   const generateMetadata = () => call('metadata', rawMetadata);
   const saveMetadata = () => call('save-metadata', rawSaveMetadata);
   const generateThumbnail = () => call('thumbnail', rawThumbnail);
+  const generateVisuals = () => call('visuals', rawVisuals);
   const generateAudio = () => call('audio', rawAudio);
   const generateVideo = () => call('video', rawVideoRender);
   const extractReels = () => call('extract', rawExtract);
@@ -338,6 +373,14 @@ export default function Home() {
   const generateReels = () => call('reels', rawReels);
   const publishYouTube = () => call('publish-youtube', async () => rawPublish('youtube'));
   const publishInstagram = () => call('publish-instagram', async () => rawPublish('instagram'));
+  const regenerateVisual = (scene: VisualScene) => call(`visual-${scene.id}`, async () => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/visuals/${scene.id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: scene.searchQuery }),
+    }));
+    setVisualScenes(items => items.map(item => item.id === scene.id ? data.scene : item));
+    setNonce(value => value + 1);
+  });
 
   // ---- auto ("Generate all") ----
   const generateAll = () => {
@@ -350,6 +393,7 @@ export default function Home() {
           const name = await rawScript();
           await rawMetadata(name);
           await rawThumbnail(name);
+          if (cfg.visualMode === 'infographic') await rawVisuals(name);
           await rawAudio(name);
           await rawVideoRender(name);
           try {
@@ -388,16 +432,34 @@ export default function Home() {
     try {
       if (editMetadata !== debate!.metadata) await rawSaveMetadata();
       await rawThumbnail();
-      await rawAudio();
-      await rawVideoRender();
-      try { await rawExtract(); setAutoStep('awaiting-reels'); }
-      catch (e) {
-        setError(`Video done. Reel extraction failed: ${e instanceof Error ? e.message : ''}`);
-        setAuto(false); setAutoStep(null);
+      if (cfg.visualMode === 'infographic') {
+        await rawVisuals();
+        setAutoStep('awaiting-visuals');
+      } else {
+        await renderAfterReviews();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto run failed.');
       setAutoStep('awaiting-metadata');
+    } finally { setBusy(''); }
+  }
+
+  async function renderAfterReviews() {
+    await rawAudio();
+    await rawVideoRender();
+    try { await rawExtract(); setAutoStep('awaiting-reels'); }
+    catch (e) {
+      setError(`Video done. Reel extraction failed: ${e instanceof Error ? e.message : ''}`);
+      setAuto(false); setAutoStep(null);
+    }
+  }
+
+  async function continueAfterVisuals() {
+    setError(''); setBusy('auto'); setAutoStep('running');
+    try { await renderAfterReviews(); }
+    catch (err) {
+      setError(err instanceof Error ? err.message : 'Render failed.');
+      setAutoStep('awaiting-visuals');
     } finally { setBusy(''); }
   }
 
@@ -412,6 +474,7 @@ export default function Home() {
     localStorage.removeItem(LS_KEY);
     setDebate(null); setTopic(''); setContext('');
     setEditScript(''); setEditMetadata(''); setEditReels([]);
+    setVisualScenes([]);
     setJob(null); setError(''); setAuto(false); setAutoStep(null);
   }
 
@@ -448,6 +511,8 @@ export default function Home() {
   const instagramPublished = (debate?.publishing?.instagram?.length ?? 0) === 3;
   // A render running on some OTHER debate (our own render is already shown via `job`).
   const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
+  const visualsReady = cfg.visualMode !== 'infographic'
+    || (visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath));
 
   return (
     <main className="app-shell">
@@ -539,6 +604,12 @@ export default function Home() {
             <div className={`status-card ${debate.metadata ? 'complete' : ''}`}><span>Metadata</span><strong>{debate.metadata ? 'Ready' : 'Pending'}</strong></div>
             <div className={`status-card ${debate.videoExists ? 'complete' : ''}`}><span>Main video</span><strong>{debate.videoExists ? 'Ready' : 'Pending'}</strong></div>
             <div className={`status-card ${debate.reelsCount === 3 ? 'complete' : ''}`}><span>Shorts</span><strong>{debate.reelsCount}/3</strong></div>
+            {cfg.visualMode === 'infographic' && (
+              <div className={`status-card ${visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath) ? 'complete' : ''}`}>
+                <span>Visual scenes</span>
+                <strong>{visualScenes.filter(scene => scene.imagePath).length}/{visualScenes.length || '—'}</strong>
+              </div>
+            )}
           </section>
 
           {(debate.videoExists || debate.reelsCount > 0) && (
@@ -700,6 +771,67 @@ export default function Home() {
               </div>
             )}
 
+            {cfg.visualMode === 'infographic' && (
+              <div className="sub-action visual-scenes-section">
+                <div className="sub-head">
+                  <strong>Visual scenes</strong>
+                  {visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath) && <span className="ok-tag">ready</span>}
+                </div>
+                {!visualsConfigured ? (
+                  <p className="review-note">Add <code>PEXELS_API_KEY</code> to <code>.env</code>, then restart the app.</p>
+                ) : visualScenes.length === 0 ? (
+                  <>
+                    <p className="review-note">Creates one topic-specific stock photo for every three dialogue lines.</p>
+                    <button onClick={generateVisuals} disabled={working || renderElsewhere}>
+                      {job?.kind === 'visuals' ? 'Finding visuals…' : 'Generate visual scenes'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="review-note">
+                      Review each image or change its search. <a href="https://www.pexels.com" target="_blank" rel="noreferrer">Photos provided by Pexels</a>.
+                    </p>
+                    <div className="visual-grid">
+                      {visualScenes.map((scene, index) => (
+                        <article className="visual-card" key={scene.id}>
+                          {scene.imagePath
+                            ? <img src={`/api/debate/${name}/visuals/${scene.id}/image?t=${nonce}`} alt={scene.headline} />
+                            : <div className="visual-missing">{scene.error || 'No image'}</div>}
+                          <div className="visual-card-body">
+                            <strong>{index + 1}. {scene.headline}</strong>
+                            <input
+                              aria-label={`Search query for ${scene.id}`}
+                              value={scene.searchQuery}
+                              disabled={working}
+                              onChange={event => setVisualScenes(items => items.map(item => item.id === scene.id
+                                ? { ...item, searchQuery: event.target.value }
+                                : item))}
+                            />
+                            {scene.source && (
+                              <small>
+                                Photo by <a href={scene.source.photographerUrl} target="_blank" rel="noreferrer">{scene.source.photographer}</a>
+                              </small>
+                            )}
+                            <button className="btn-secondary" onClick={() => regenerateVisual(scene)} disabled={working}>
+                              {busy === `visual-${scene.id}` ? 'Replacing…' : 'Replace image'}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    <div className="row">
+                      <button className="btn-secondary" onClick={generateVisuals} disabled={working || renderElsewhere}>
+                        Regenerate all scenes
+                      </button>
+                      {autoStep === 'awaiting-visuals' && (
+                        <button onClick={continueAfterVisuals} disabled={working || renderElsewhere || !visualsReady}>Continue → render video</button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Thumbnail */}
             <div className="sub-action">
               <div className="sub-head"><strong>Thumbnail</strong>{debate.thumbnailExists && <span className="ok-tag">ready</span>}</div>
@@ -733,9 +865,10 @@ export default function Home() {
               ) : (
                 <>
                   {job?.kind === 'video' && <p className="review-note">Rendering video…</p>}
+                  {!visualsReady && <p className="review-note">Complete all visual scenes before rendering the infographic video.</p>}
                   {debate.videoExists && <video controls src={`/api/debate/${name}/video?t=${nonce}`} />}
                   <div className="row">
-                    <button onClick={generateVideo} disabled={working || renderElsewhere}>
+                    <button onClick={generateVideo} disabled={working || renderElsewhere || !visualsReady}>
                       {job?.kind === 'video' ? 'Rendering…' : debate.videoExists ? 'Regenerate video' : 'Generate video'}
                     </button>
                     {debate.videoExists && <a className="dl" href={`/api/debate/${name}/video`} download>Download</a>}

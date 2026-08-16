@@ -27,6 +27,8 @@ npm run next:dev
 
 Open `http://localhost:3000`, enter a debate title/topic and context, then click **Create full video pack**. Choose either character-debate visuals or generated infographic cards. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. Finished files can be downloaded together as a ZIP. Publishing to YouTube and Instagram remains available as an optional final step; upload receipts make retries skip posts that already succeeded.
 
+For topic-specific infographic photos, create a free API key at [Pexels API](https://www.pexels.com/api/), add it as `PEXELS_API_KEY` in `.env`, and restart the app. The app downloads and caches one photo per three dialogue lines, shows every photo for review, and saves photographer credits with the download pack. Without this key, character-debate videos still work normally.
+
 One-time social account setup:
 
 1. In Google Cloud, enable the YouTube Data API, create an OAuth web client, authorize the `https://www.googleapis.com/auth/youtube.upload` scope, and put its client ID, client secret, and refresh token in `.env`.

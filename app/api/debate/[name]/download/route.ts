@@ -5,7 +5,7 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import { isValidDebateName } from '@/lib/stage';
 import { findMainVideo, findReelVideos } from '@/lib/videos';
-import { publishMetadata, publishThumbnail } from '@/src/paths';
+import { publishMetadata, publishThumbnail, visualCreditsPath } from '@/src/paths';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     ...findReelVideos(name),
     publishThumbnail(name),
     publishMetadata(name),
+    visualCreditsPath(name),
   ];
   const files = candidates.filter((file): file is string => !!file && fs.existsSync(file));
   if (files.length === 0) {

@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { jobRecordPath } from '@/src/paths';
 
 export type JobStatus = 'running' | 'done' | 'error';
-export type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
+export type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 
 export interface Job {
   id: string;

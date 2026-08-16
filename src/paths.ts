@@ -66,3 +66,22 @@ export function publishRecordPath(name: string): string {
 export function jobRecordPath(id: string): string {
   return `output/jobs/${id}.json`;
 }
+
+/** Cached scene plan and downloaded source images for infographic projects. */
+export function visualsDir(name: string): string {
+  return `output/visuals/${parentName(name)}`;
+}
+
+export function visualPlanPath(name: string): string {
+  const parent = parentName(name);
+  return `${visualsDir(parent)}/${parent}.visuals.json`;
+}
+
+export function visualSceneImagePath(name: string, sceneId: string): string {
+  return `${visualsDir(name)}/${sceneId}.jpg`;
+}
+
+export function visualCreditsPath(name: string): string {
+  const parent = parentName(name);
+  return `output/publish/${parent}/${parent}.visual-credits.txt`;
+}
