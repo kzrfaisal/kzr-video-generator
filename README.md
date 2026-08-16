@@ -25,7 +25,7 @@ Start the app on the laptop:
 npm run next:dev
 ```
 
-Open `http://localhost:3000`, enter a debate title/topic and context, then click **Create & publish everything**. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. It uploads one main video and three Shorts to YouTube, then publishes the three portrait videos as Instagram Reels. Upload receipts are saved beside the videos, so retrying skips posts that already succeeded.
+Open `http://localhost:3000`, enter a debate title/topic and context, then click **Create full video pack**. Choose either character-debate visuals or generated infographic cards. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. Finished files can be downloaded together as a ZIP. Publishing to YouTube and Instagram remains available as an optional final step; upload receipts make retries skip posts that already succeeded.
 
 One-time social account setup:
 
@@ -89,7 +89,7 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 | `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate (and the metadata file). |
 | `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
 | `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
-| `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions). Hashtags are lowercase and grounded in a web search (via `gpt-4o-mini-search-preview`) for popularity; reel captions are prefixed with `Part N - <YouTube title>`. Costs the extra small search call plus one `scriptModel` call. Set to `false` to skip. |
+| `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions). Hashtags are generated without web search; reel captions are prefixed with `Part N - <YouTube title>`. Costs one additional `scriptModel` call. Set to `false` to skip. |
 | `generateThumbnail` | `true` | When `true`, the script stage also renders a 1280×720 `debateN.thumbnail.jpg` using `thumbnailBackground` + the `## Thumbnail Hook` line from the metadata file. Requires `generateMetadata: true`. No extra OpenAI call. |
 | `thumbnailBackground` | `'assets/images/image_H.png'` | Background image overlaid with the `DEBATE` label + center hook text by ffmpeg `drawtext`. Any 16:9 image works; non-16:9 is letterboxed with black bars. |
 | `thumbnailFont` | `{ font, label: { size, color, x, y }, hook: { size, color, x, y } }` | Object holding the thumbnail's `.ttf` font plus per-element `size`, `color`, `x`, `y` for the `label` and the `hook`. `color` accepts named colors (`white`, `gold`), hex (`0xFF6B35`), or `name@alpha`. `x`/`y` accept raw pixels (`'80'`) **or** ffmpeg drawtext expressions: `w`/`h` = canvas size (1280/720), `text_w`/`text_h` = rendered text size — so `(w-text_w)/2` centers horizontally and `(h-text_h)/2-80` centers vertically then shifts up 80px. Kept separate from `font` so subtitle styling is unaffected. Heavy/display faces (Anton, Bebas Neue, Impact, Montserrat Black) work best at thumbnail scale. |

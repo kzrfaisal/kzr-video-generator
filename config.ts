@@ -113,6 +113,8 @@ export interface Config {
 
   /** Active video-style preset key into VIDEO_STYLES (e.g. 'style1', 'style2', 'style3') */
   videoStyle: string;
+  /** Visual treatment for each scene: character debate backgrounds or generated infographic cards. */
+  visualMode: 'debate' | 'infographic';
   /** Speaker → image path used for that speaker's segments */
   images: Record<string, string>;
 
@@ -179,6 +181,7 @@ const baseConfig: Config = {
   transitionStyle: 'fade-pcm',
 
   videoStyle: 'style1',
+  visualMode: 'debate',
   images: {
     HOST: 'assets/images/image_H.png',
     A: 'assets/images/image_A.png',
@@ -316,6 +319,7 @@ export const config: Config = {
 /** Per-run overrides the web UI can choose without editing this file. */
 export interface RunOverrides {
   videoStyle?: string;                 // a VIDEO_STYLES key (e.g. style1 / style2)
+  visualMode?: 'debate' | 'infographic';
   voices?: Partial<Config['voices']>;  // per-speaker OpenAI voice
   ttsModel?: string;                   // 'tts-1' | 'tts-1-hd'
   ttsSpeed?: number;                   // 0.25–4.0
@@ -334,6 +338,8 @@ export function configureRun(o: RunOverrides): void {
     throw new Error(`Unknown video style: "${style}". Available: ${Object.keys(VIDEO_STYLES).join(', ')}`);
   }
   const merged: Config = { ...baseConfig, ...VIDEO_STYLES[style], videoStyle: style };
+
+  if (o.visualMode) merged.visualMode = o.visualMode;
 
   if (o.voices) {
     merged.voices = { ...merged.voices };

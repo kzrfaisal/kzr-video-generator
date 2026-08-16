@@ -1,9 +1,40 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
+import path from 'path';
 import { runStage } from '@/lib/stage';
-import { scriptPath } from '@/src/paths';
+import { scriptPath, projectPath } from '@/src/paths';
+import { findMainVideo, findReelVideos, hasAudio } from '@/lib/videos';
 
 export const runtime = 'nodejs';
+
+// GET /api/debate — list local projects, newest first.
+export async function GET() {
+  const dir = 'output/debates';
+  if (!fs.existsSync(dir)) return NextResponse.json({ projects: [] });
+
+  const projects = fs.readdirSync(dir)
+    .filter(file => /^debate\d+\.project\.json$/.test(file))
+    .flatMap(file => {
+      const debateName = file.replace('.project.json', '');
+      try {
+        const record = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+        const updatedAt = fs.statSync(path.join(dir, file)).mtimeMs;
+        return [{
+          debateName,
+          topic: typeof record.topic === 'string' ? record.topic : debateName,
+          updatedAt,
+          audioExists: hasAudio(debateName),
+          videoExists: findMainVideo(debateName) !== null,
+          reelsCount: findReelVideos(debateName).length,
+        }];
+      } catch {
+        return [];
+      }
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+
+  return NextResponse.json({ projects });
+}
 
 // POST /api/debate — generate a new debate script from a topic + context.
 export async function POST(req: Request) {

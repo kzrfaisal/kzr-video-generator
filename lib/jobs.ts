@@ -5,7 +5,10 @@
  *
  * Single-user, local, one job at a time. Becomes a real queue in the SaaS build.
  */
+import fs from 'fs';
+import path from 'path';
 import { spawn, type ChildProcess } from 'child_process';
+import { jobRecordPath } from '@/src/paths';
 
 export type JobStatus = 'running' | 'done' | 'error';
 export type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
@@ -25,6 +28,32 @@ export interface Job {
 
 const g = globalThis as unknown as { __jobs?: Map<string, Job> };
 export const jobs: Map<string, Job> = g.__jobs ?? (g.__jobs = new Map());
+
+function persistJob(job: Job) {
+  const file = jobRecordPath(job.id);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(publicJob(job), null, 2), 'utf-8');
+}
+
+/** Find a live in-memory job or recover its last durable state after a reload. */
+export function getJob(id: string): Job | null {
+  const live = jobs.get(id);
+  if (live) return live;
+  const file = jobRecordPath(id);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const recovered = JSON.parse(fs.readFileSync(file, 'utf-8')) as Job;
+    if (recovered.status === 'running') {
+      recovered.status = 'error';
+      recovered.error = 'The app restarted while this job was running. Check generated files, then retry the step.';
+      persistJob(recovered);
+    }
+    jobs.set(id, recovered);
+    return recovered;
+  } catch {
+    return null;
+  }
+}
 
 /** Whether a job's child process actually still exists in the OS (not just per Node's view). */
 function processAlive(j: Job): boolean {
@@ -46,6 +75,7 @@ export function activeJob(): Job | null {
     // Process ended without a close event (e.g. server reload / orphaned) — unblock it.
     j.status = 'error';
     j.error = j.error ?? 'Background process ended unexpectedly.';
+    persistJob(j);
   }
   return null;
 }
@@ -61,24 +91,30 @@ export function publicJob(j: Job) {
 }
 
 function ingest(job: Job, chunk: string) {
+  let changed = false;
   for (const raw of chunk.split('\n')) {
     const line = raw.trimEnd();
     if (!line) continue;
     if (line.startsWith('@@STAGE@@ ')) {
       job.stage = line.slice('@@STAGE@@ '.length).trim();
+      changed = true;
     } else if (line.startsWith('@@REEL@@ ')) {
       job.reelPaths.push(line.slice('@@REEL@@ '.length).trim());
+      changed = true;
     } else {
       job.logs.push(line);
       if (job.logs.length > 80) job.logs.shift();
+      changed = true;
     }
   }
+  if (changed) persistJob(job);
 }
 
 /** Spawn a pipeline subcommand as a job and fold its output into `job`. */
 export function startJob(job: Job, args: string[]) {
   const child = spawn('npx', ['tsx', 'src/runPipeline.ts', ...args], { cwd: process.cwd() });
   job.child = child;
+  persistJob(job);
 
   child.stdout.on('data', d => ingest(job, d.toString()));
   child.stderr.on('data', d => ingest(job, d.toString()));
@@ -87,6 +123,7 @@ export function startJob(job: Job, args: string[]) {
     job.status = 'error';
     job.error = `Failed to start: ${err.message}`;
     job.child = undefined;
+    persistJob(job);
   });
 
   child.on('close', code => {
@@ -101,5 +138,6 @@ export function startJob(job: Job, args: string[]) {
       const tail = job.logs.slice(-3).join(' ').trim();
       job.error = job.error ?? (tail || `Exited with code ${code}.`);
     }
+    persistJob(job);
   });
 }

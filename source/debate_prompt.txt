@@ -13,6 +13,8 @@ FORMAT RULES:
 
 Host introduces the debate first
 
+Host opens with a sharp 1-2 line hook that makes the real-world tension immediately clear
+
 Host should moderate and orchestrate the discussion
 
 Speaker A gives opening argument
@@ -37,6 +39,10 @@ DIALOGUE RULES:
 
 Natural spoken language
 
+Each side must defend a clearly different position throughout the debate
+
+Use concrete real-world examples when useful, but never invent studies, quotations, statistics, or current events
+
 Each line must contain 1-2 sentences maximum
 
 Lines should be short enough to fit a subtitle card (max two subtitle lines)
@@ -47,7 +53,7 @@ Each speaker should develop their argument step-by-step across multiple lines
 
 Avoid generic debate phrases like "In short", "Imagine a world", or "Thanks!"
 
-Avoid overly polished or promotional language
+Avoid overly polished, promotional, or repetitive language
 
 Host should react naturally (appreciate points, guide debate)
 
@@ -68,6 +74,8 @@ Host transitions should sound conversational (for example:
 "Now let's hear the other side."
 "Interesting argument."
 "Before we wrap up…")
+
+The final audience question must be specific enough to invite a real opinion, not simply "What do you think?"
 
 NO narration text.
 NO stage directions.
@@ -135,7 +143,7 @@ A|Thank you! AI can personalize learning experiences.
 A|It adapts to each student's needs, addressing their strengths and weaknesses.  
 A|This tailored approach can lead to better learning outcomes.  
 
-HOST|Interesting points, Speaker A. Now let’s hear from Speaker B.
+HOST|Interesting points, Zach. Now let’s hear from David.
 "
 
 

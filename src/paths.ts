@@ -61,3 +61,8 @@ export function publishRecordPath(name: string): string {
   const parent = parentName(name);
   return `output/publish/${parent}/${parent}.publish.json`;
 }
+
+/** Durable local state for a background job, allowing errors to survive page reloads. */
+export function jobRecordPath(id: string): string {
+  return `output/jobs/${id}.json`;
+}

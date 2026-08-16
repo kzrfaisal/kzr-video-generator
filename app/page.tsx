@@ -15,6 +15,7 @@ interface CustomSubtitle {
 }
 
 interface RunConfig {
+  visualMode: 'debate' | 'infographic';
   voices: { HOST: string; A: string; B: string };
   ttsModel: string;
   ttsSpeed: number;
@@ -59,13 +60,23 @@ interface Debate {
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
 type JobKind = 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
-interface JobView { id: string; kind: JobKind; stage: string; status: string; error?: string; }
+interface JobView { id: string; kind: JobKind; stage: string; status: string; logs?: string[]; error?: string; }
 
-// Auto ("Generate all") pauses at two gates: after the script, and after the reel scripts.
-type AutoStep = null | 'awaiting-script' | 'running' | 'awaiting-reels';
+interface ProjectSummary {
+  debateName: string;
+  topic: string;
+  updatedAt: number;
+  audioExists: boolean;
+  videoExists: boolean;
+  reelsCount: number;
+}
+
+// Reviewed generation pauses after the script, metadata, and reel scripts.
+type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'running' | 'awaiting-reels';
 
 const LS_KEY = 'activeDebate';
 const DEFAULT_CFG: RunConfig = {
+  visualMode: 'debate',
   voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -105,6 +116,7 @@ export default function Home() {
   const [auto, setAuto] = useState(false);
   const [autoStep, setAutoStep] = useState<AutoStep>(null);
   const [nonstop, setNonstop] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const [previewing, setPreviewing] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -112,6 +124,7 @@ export default function Home() {
 
   useEffect(() => {
     fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
+    refreshProjects();
     const name = localStorage.getItem(LS_KEY);
     if (name) fetch(`/api/debate/${name}`).then(async r => {
       if (r.ok) loadDebate(await r.json());
@@ -119,6 +132,13 @@ export default function Home() {
     });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  async function refreshProjects() {
+    try {
+      const data = await jsonOrThrow(await fetch('/api/debate'));
+      setProjects(data.projects ?? []);
+    } catch { /* the editor remains usable if project history cannot load */ }
+  }
 
   // Poll whether a render is running anywhere, so we can disable render buttons app-wide.
   useEffect(() => {
@@ -165,7 +185,10 @@ export default function Home() {
 
   async function refetchDebate(name: string) {
     const res = await fetch(`/api/debate/${name}`);
-    if (res.ok) loadDebate(await res.json());
+    if (res.ok) {
+      loadDebate(await res.json());
+      await refreshProjects();
+    }
   }
 
   async function jsonOrThrow(res: Response) {
@@ -197,8 +220,8 @@ export default function Home() {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
-          const j = await (await fetch(`/api/job/${jobId}`)).json();
-          setJob({ id: jobId, kind, stage: j.stage, status: j.status, error: j.error });
+          const j = await jsonOrThrow(await fetch(`/api/job/${jobId}`));
+          setJob({ id: jobId, kind, stage: j.stage, status: j.status, logs: j.logs, error: j.error });
           if (j.status !== 'running') {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
@@ -228,11 +251,18 @@ export default function Home() {
   // and fall back to the current debate.
   const rawScript = async (): Promise<string> => {
     if (!topic.trim()) throw new Error('Please enter a topic.');
+    // Capture the new-project choices before loadDebate initializes the project state.
+    const selectedConfig = buildConfigPayload();
     const data = await jsonOrThrow(await fetch('/api/debate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, context }),
     }));
-    loadDebate(data);
+    await jsonOrThrow(await fetch(`/api/debate/${data.debateName}/config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: selectedConfig }),
+    }));
+    loadDebate({ ...data, config: selectedConfig });
+    await refreshProjects();
     return data.debateName as string;
   };
   const rawSaveScript = async (name = debate!.debateName) => {
@@ -246,6 +276,13 @@ export default function Home() {
     const data = await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, { method: 'POST' }));
     setEditMetadata(data.metadata);
     setDebate(d => (d ? { ...d, metadata: data.metadata } : d));
+  };
+  const rawSaveMetadata = async (name = debate!.debateName) => {
+    await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metadata: editMetadata }),
+    }));
+    setDebate(d => (d ? { ...d, metadata: editMetadata } : d));
   };
   const saveConfig = async (name = debate!.debateName) => {
     await jsonOrThrow(await fetch(`/api/debate/${name}/config`, {
@@ -286,13 +323,7 @@ export default function Home() {
   const generateScript = () => call('script', async () => { await rawScript(); });
   const saveScript = () => call('save-script', rawSaveScript);
   const generateMetadata = () => call('metadata', rawMetadata);
-  const saveMetadata = () => call('save-metadata', async () => {
-    await jsonOrThrow(await fetch(`/api/debate/${debate!.debateName}/metadata`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ metadata: editMetadata }),
-    }));
-    setDebate(d => (d ? { ...d, metadata: editMetadata } : d));
-  });
+  const saveMetadata = () => call('save-metadata', rawSaveMetadata);
   const generateThumbnail = () => call('thumbnail', rawThumbnail);
   const generateAudio = () => call('audio', rawAudio);
   const generateVideo = () => call('video', rawVideoRender);
@@ -308,22 +339,6 @@ export default function Home() {
   const publishYouTube = () => call('publish-youtube', async () => rawPublish('youtube'));
   const publishInstagram = () => call('publish-instagram', async () => rawPublish('instagram'));
 
-  const generateAndPublish = () => call('auto-publish', async () => {
-    setAuto(true); setAutoStep('running');
-    try {
-      const name = await rawScript();
-      await rawMetadata(name);
-      await rawThumbnail(name);
-      await rawAudio(name);
-      await rawVideoRender(name);
-      await rawExtract(name);
-      await rawReels(name);
-      await rawPublish('all', name);
-    } finally {
-      setAuto(false); setAutoStep(null);
-    }
-  });
-
   // ---- auto ("Generate all") ----
   const generateAll = () => {
     if (nonstop) {
@@ -331,18 +346,21 @@ export default function Home() {
       // through each step so it doesn't depend on React state settling between calls.
       call('auto', async () => {
         setAuto(true); setAutoStep('running');
-        const name = await rawScript();
-        await rawMetadata(name);
-        await rawThumbnail(name);
-        await rawAudio(name);
-        await rawVideoRender(name);
         try {
-          await rawExtract(name);
-          await rawReels(name);
-        } catch (e) {
-          setError(`Video is done. Reels step failed: ${e instanceof Error ? e.message : ''}`);
+          const name = await rawScript();
+          await rawMetadata(name);
+          await rawThumbnail(name);
+          await rawAudio(name);
+          await rawVideoRender(name);
+          try {
+            await rawExtract(name);
+            await rawReels(name);
+          } catch (e) {
+            setError(`Video is done. Reels step failed: ${e instanceof Error ? e.message : ''}`);
+          }
+        } finally {
+          setAuto(false); setAutoStep(null);
         }
-        setAuto(false); setAutoStep(null);
       });
     } else {
       call('script', async () => {
@@ -358,6 +376,17 @@ export default function Home() {
     try {
       if (editScript !== debate!.script) await rawSaveScript();
       await rawMetadata();
+      setAutoStep('awaiting-metadata');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Metadata generation failed.');
+      setAutoStep('awaiting-script');
+    } finally { setBusy(''); }
+  }
+
+  async function continueAfterMetadata() {
+    setError(''); setBusy('auto'); setAutoStep('running');
+    try {
+      if (editMetadata !== debate!.metadata) await rawSaveMetadata();
       await rawThumbnail();
       await rawAudio();
       await rawVideoRender();
@@ -368,7 +397,7 @@ export default function Home() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto run failed.');
-      setAutoStep('awaiting-script');
+      setAutoStep('awaiting-metadata');
     } finally { setBusy(''); }
   }
 
@@ -384,6 +413,14 @@ export default function Home() {
     setDebate(null); setTopic(''); setContext('');
     setEditScript(''); setEditMetadata(''); setEditReels([]);
     setJob(null); setError(''); setAuto(false); setAutoStep(null);
+  }
+
+  async function openProject(projectName: string) {
+    if (working || projectName === name) return;
+    await call('open-project', async () => {
+      const data = await jsonOrThrow(await fetch(`/api/debate/${projectName}`));
+      loadDebate(data);
+    });
   }
 
   const setVoice = (sp: 'HOST' | 'A' | 'B', v: string) =>
@@ -413,11 +450,31 @@ export default function Home() {
   const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
 
   return (
-    <main className="wrap">
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">Debate Studio</div>
+        <button className="new-project" onClick={startNew} disabled={working}>＋ New project</button>
+        <div className="sidebar-label">Recent projects</div>
+        <div className="project-list">
+          {projects.length === 0 && <p className="empty-projects">No projects yet.</p>}
+          {projects.map(project => (
+            <button
+              key={project.debateName}
+              className={`project-item ${project.debateName === name ? 'selected' : ''}`}
+              onClick={() => openProject(project.debateName)}
+              disabled={working}
+            >
+              <span>{project.topic}</span>
+              <small>{project.videoExists ? `Video · ${project.reelsCount}/3 shorts` : project.audioExists ? 'Audio ready' : 'Draft'}</small>
+            </button>
+          ))}
+        </div>
+      </aside>
+      <div className="workspace">
       <div className="head-row">
         <div>
-          <h1>Debate Video Generator</h1>
-          <p className="sub">{debate ? `Working on ${debate.debateName}` : 'Start a new debate video.'}</p>
+          <h1>{debate ? debate.topic || debate.debateName : 'Create a debate video pack'}</h1>
+          <p className="sub">{debate ? debate.debateName : 'One topic becomes a landscape video and three vertical shorts.'}</p>
         </div>
         {debate && <button className="btn-secondary" onClick={startNew} disabled={working}>Start new</button>}
       </div>
@@ -426,6 +483,16 @@ export default function Home() {
         <div className="busy-banner">
           A render is in progress on <strong>{globalBusy!.debateName}</strong> ({globalBusy!.kind} · {globalBusy!.stage}).
           Video and reel buttons are paused until it finishes.
+        </div>
+      )}
+
+      {job && (
+        <div className="job-progress" role="status">
+          <span className="job-spinner" aria-hidden="true" />
+          <div>
+            <strong>{job.stage === 'publishing' ? 'Publishing' : `Working on ${job.stage}`}…</strong>
+            {job.logs?.length ? <p>{job.logs[job.logs.length - 1]}</p> : <p>This can take a few minutes. You can keep this tab open.</p>}
+          </div>
         </div>
       )}
 
@@ -441,20 +508,23 @@ export default function Home() {
                   disabled={working || !!debate} />
         {!debate && (
           <>
+            <label htmlFor="visual-format">Visual format</label>
+            <select id="visual-format" value={cfg.visualMode} disabled={working}
+                    onChange={e => setCfg(c => ({ ...c, visualMode: e.target.value as RunConfig['visualMode'] }))}>
+              <option value="debate">Character debate</option>
+              <option value="infographic">Infographic cards</option>
+            </select>
             <div className="row">
-              <button onClick={generateAndPublish} disabled={working || renderElsewhere}>
-                {busy === 'auto-publish' ? 'Creating & publishing…' : 'Create & publish everything'}
+              <button onClick={generateAll} disabled={working || renderElsewhere}>
+                {(busy === 'auto' || (busy === 'script' && auto)) ? 'Creating pack…' : 'Create full video pack'}
               </button>
               <button onClick={generateScript} disabled={working}>
-                {busy === 'script' && !auto ? 'Generating…' : 'Generate script'}
-              </button>
-              <button className="btn-secondary" onClick={generateAll} disabled={working || renderElsewhere}>
-                {(busy === 'auto' || (busy === 'script' && auto)) ? 'Generating…' : 'Generate all'}
+                {busy === 'script' && !auto ? 'Generating…' : 'Generate script only'}
               </button>
             </div>
             <label className="check">
               <input type="checkbox" checked={nonstop} onChange={e => setNonstop(e.target.checked)} disabled={working} />
-              Non-stop — with “Generate all”, run everything with no review pauses
+              Skip script and metadata reviews and run automatically
             </label>
           </>
         )}
@@ -464,6 +534,23 @@ export default function Home() {
 
       {debate && (
         <>
+          <section className="status-grid" aria-label="Project status">
+            <div className="status-card complete"><span>Script</span><strong>Ready</strong></div>
+            <div className={`status-card ${debate.metadata ? 'complete' : ''}`}><span>Metadata</span><strong>{debate.metadata ? 'Ready' : 'Pending'}</strong></div>
+            <div className={`status-card ${debate.videoExists ? 'complete' : ''}`}><span>Main video</span><strong>{debate.videoExists ? 'Ready' : 'Pending'}</strong></div>
+            <div className={`status-card ${debate.reelsCount === 3 ? 'complete' : ''}`}><span>Shorts</span><strong>{debate.reelsCount}/3</strong></div>
+          </section>
+
+          {(debate.videoExists || debate.reelsCount > 0) && (
+            <section className="download-panel">
+              <div>
+                <strong>Your files are ready</strong>
+                <p>Download one ZIP with every finished video, thumbnail, and metadata file.</p>
+              </div>
+              <a className="download-pack" href={`/api/debate/${name}/download`} download>Download pack</a>
+            </section>
+          )}
+
           {/* 2 — Script */}
           <section className="panel">
             <h2 className="step-title">2 · Script</h2>
@@ -504,6 +591,11 @@ export default function Home() {
                   <button className="btn-secondary" onClick={generateMetadata} disabled={working}>
                     {busy === 'metadata' ? 'Regenerating…' : 'Regenerate'}
                   </button>
+                  {autoStep === 'awaiting-metadata' && (
+                    <button onClick={continueAfterMetadata} disabled={working || renderElsewhere}>
+                      Continue → render video
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -515,6 +607,14 @@ export default function Home() {
 
             {options && (
               <div className="config-grid">
+                <div>
+                  <label>Visual format</label>
+                  <select value={cfg.visualMode} disabled={working}
+                          onChange={e => setCfg(c => ({ ...c, visualMode: e.target.value as RunConfig['visualMode'] }))}>
+                    <option value="debate">Character debate</option>
+                    <option value="infographic">Infographic cards</option>
+                  </select>
+                </div>
                 <div>
                   <label>Video style</label>
                   <select value={cfg.videoStyle} disabled={working}
@@ -733,6 +833,7 @@ export default function Home() {
           </section>
         </>
       )}
+      </div>
     </main>
   );
 }

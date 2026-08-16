@@ -25,6 +25,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (c.videoStyle && !(c.videoStyle in VIDEO_STYLES && c.videoStyle !== 'style3')) {
     return NextResponse.json({ error: `Invalid video style: ${c.videoStyle}` }, { status: 400 });
   }
+  if (c.visualMode && !['debate', 'infographic'].includes(c.visualMode)) {
+    return NextResponse.json({ error: `Invalid visual mode: ${c.visualMode}` }, { status: 400 });
+  }
   if (c.subtitleStyle && !(c.subtitleStyle in STYLES)) {
     return NextResponse.json({ error: `Invalid subtitle style: ${c.subtitleStyle}` }, { status: 400 });
   }

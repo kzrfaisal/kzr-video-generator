@@ -4,6 +4,7 @@ import { spawnSync } from 'child_process';
 import { ensureDir, wrapText, parseDebateFile } from './utils';
 import { config, STYLES, SubtitleStyle } from '../config';
 import { publishMetadata } from './paths';
+import { createInfographicOverlay } from './infographic';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -21,6 +22,12 @@ function resolveStyleAndImage(speaker: string): { styleName: string; image: stri
     styleName: config.subtitleStyle[speaker] ?? config.subtitleStyle.A,
     image:     config.images[speaker]        ?? config.images.A,
   };
+}
+
+function speakerDisplayName(speaker: string): string {
+  if (speaker === 'A') return 'ZACH';
+  if (speaker === 'B') return 'DAVID';
+  return 'MODERATOR';
 }
 
 /** Read the `## YouTube Title` line from a debate's metadata file, or null if unavailable. */
@@ -54,6 +61,7 @@ function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: num
   const opts: string[] = [
     `fontfile=${path.resolve(style.font ?? config.font)}`,
     `textfile=${filePath}`,
+    'expansion=none',
     `fontcolor=${style.fontcolor}`,
     `fontsize=${style.fontsize}`,
     `x=(w-text_w)/2`,
@@ -84,7 +92,11 @@ function buildAudioFilter(startPadSec: number, endPadSec: number): string {
   return filters.join(',');
 }
 
-function createSegment(
+export function createSegment(
+  speaker: string,
+  debateName: string,
+  lineIndex: number,
+  lineCount: number,
   image: string,
   audio: string,
   text: string,
@@ -106,9 +118,37 @@ function createSegment(
 
   const allFilters: string[] = [
     config.isReelStyle
-      ? 'scale=1080:1920'
+      ? 'scale=1080:1920,setsar=1'
       : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black',
   ];
+
+  const infographic = config.visualMode === 'infographic'
+    ? createInfographicOverlay(
+        debateName, speaker, text, lineIndex, lineCount, config.isReelStyle,
+        outputBase, config.bannerFont.font,
+      )
+    : { filters: [], tempFiles: [] };
+  allFilters.push(...infographic.filters);
+
+  // Character mode needs a name label. Infographic mode already includes one in its header.
+  let speakerLabelFile: string | null = null;
+  if (config.visualMode !== 'infographic') {
+    speakerLabelFile = path.resolve(`${outputBase}_speaker.txt`);
+    fs.writeFileSync(speakerLabelFile, speakerDisplayName(speaker), 'utf-8');
+    const label = config.isReelStyle
+      ? { x: 42, y: 'h-310', w: 280, h: 76, size: 38 }
+      : { x: 50, y: 'h-104', w: 235, h: 56, size: 28 };
+    allFilters.push(`drawbox=x=${label.x}:y=${label.y}:w=${label.w}:h=${label.h}:color=black@0.62:t=fill`);
+    allFilters.push([
+      `drawtext=fontfile=${path.resolve(config.bannerFont.font)}`,
+      `textfile=${speakerLabelFile}`,
+      'expansion=none',
+      'fontcolor=white',
+      `fontsize=${label.size}`,
+      `x=${label.x + 16}`,
+      `y=${label.y}+(${label.h}-text_h)/2`,
+    ].join(':'));
+  }
 
   // Lower-third bar sits behind the text
   if (style.lowerThirdBar) {
@@ -136,7 +176,7 @@ function createSegment(
       fs.writeFileSync(filePath, line, 'utf-8');
       bannerFiles.push(filePath);
       const y = `(h-${n * b.lineHeight})/2+${i * b.lineHeight}`;
-      const base = `fontfile=${fontfile}:textfile=${filePath}:fontsize=${b.size}:x=(w-text_w)/2:y=${y}`;
+      const base = `fontfile=${fontfile}:textfile=${filePath}:expansion=none:fontsize=${b.size}:x=(w-text_w)/2:y=${y}`;
       // Glow passes first (widest/faintest first), then the fill on top.
       for (const p of b.glow?.passes ?? []) {
         allFilters.push(`drawtext=${base}:fontcolor=${b.glow!.color}@${p.a}:borderw=${p.w}:bordercolor=${b.glow!.color}@${p.a}`);
@@ -166,7 +206,8 @@ function createSegment(
   ];
 
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });
-  [...textFiles, ...bannerFiles].forEach((f: string) => { try { fs.unlinkSync(f); } catch {} });
+  [...textFiles, ...bannerFiles, ...(speakerLabelFile ? [speakerLabelFile] : []), ...infographic.tempFiles]
+    .forEach((f: string) => { try { fs.unlinkSync(f); } catch {} });
   if (result.status !== 0) throw new Error(`ffmpeg failed for segment: ${outputPath}`);
 }
 
@@ -205,13 +246,19 @@ export function run(debateName: string): void {
       ? Math.max(config.audioPadding, D)
       : config.audioPadding;
 
+    const text = lines[idx].text;
     const { styleName, image } = resolveStyleAndImage(speaker);
+    const sceneImage = config.visualMode === 'infographic'
+      ? (config.isReelStyle ? 'assets/images/image_H_style3.png' : 'assets/images/image_H_style2.png')
+      : image;
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
-    const text = lines[idx].text;
 
     console.log(`Creating segment for ${file}`);
-    createSegment(image, audioPath, text, segmentPath, styleName, startPadSec, endPadSec, bannerText);
+    createSegment(
+      speaker, debateName, idx, files.length, sceneImage, audioPath, text,
+      segmentPath, styleName, startPadSec, endPadSec, bannerText,
+    );
   });
 }
 

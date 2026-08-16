@@ -76,6 +76,17 @@ function applySavedConfig(debateName: string) {
   }
 }
 
+/** Reels must keep the portrait preset, but should inherit the project's visual treatment. */
+function applySavedReelVisualMode(debateName: string) {
+  try {
+    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    const visualMode = project.config?.visualMode;
+    if (visualMode === 'debate' || visualMode === 'infographic') config.visualMode = visualMode;
+  } catch (err: any) {
+    console.warn(`Could not apply saved reel visual mode: ${err.message}`);
+  }
+}
+
 /** Thumbnail only — renders the JPG from the metadata hook. */
 export async function runThumbnail(debateName: string): Promise<string> {
   applySavedConfig(debateName);
@@ -155,6 +166,7 @@ if (require.main === module) {
     const debateName = process.argv[3];
     if (!debateName) fail('Usage: tsx src/runPipeline.ts reels-build <debateName> --style=style3');
     const parts = JSON.parse(fs.readFileSync(reelsPartsPath(debateName), 'utf-8'));
+    applySavedReelVisualMode(debateName);
     emit('reels');
     buildReelsFromParts(debateName, parts)
       .then(() => {
