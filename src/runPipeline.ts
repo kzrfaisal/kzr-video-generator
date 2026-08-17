@@ -20,10 +20,11 @@ import { extract } from './extractReelScripts';
 import { buildReelsFromParts } from './makeReels';
 import { parseContextFlag } from './utils';
 import { config, configureRun } from '../config';
-import { publishDir, publishThumbnail, scriptPath, projectPath, reelsPartsPath } from './paths';
+import { publishDir, publishThumbnail, reelsPartsPath } from './paths';
 import { publishAll, type PublishTarget } from './publish/publishAll';
 import { generateVisualScenes } from './visualScenes';
 import { normalizeContentMode, type ContentMode } from './contentMode';
+import { readProjectDocument, readProjectScriptText } from './infrastructure/storage/localProjectStore';
 
 export type Stage = 'script' | 'thumbnail' | 'visuals' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
 
@@ -58,31 +59,26 @@ export async function runScriptPhase(
   onStage('script');
   config.generateMetadata = false; // metadata is a separate step
   const { debateName } = await generateScript(topic, context, contentMode);
-  fs.writeFileSync(projectPath(debateName), JSON.stringify({
-    topic,
-    context,
-    config: { contentMode },
-  }, null, 2), 'utf-8');
   return debateName;
 }
 
 /** Metadata step: (re)generate metadata from the saved project + current script. */
 export async function runMetadataPhase(debateName: string): Promise<void> {
-  const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
-  const scriptContent = fs.readFileSync(scriptPath(debateName), 'utf-8');
+  const project = readProjectDocument(debateName);
+  const scriptContent = readProjectScriptText(debateName);
   await generateMetadata(
-    project.topic,
-    project.context ?? '',
+    project.title,
+    project.context,
     scriptContent,
     debateName,
-    normalizeContentMode(project.config?.contentMode),
+    project.contentMode,
   );
 }
 
 /** Apply this debate's saved per-run config (voices, TTS, subtitle/video style). */
 function applySavedConfig(debateName: string) {
   try {
-    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    const project = readProjectDocument(debateName);
     if (project.config) configureRun(project.config);
   } catch (err: any) {
     console.warn(`Could not apply saved config: ${err.message}`);
@@ -92,7 +88,7 @@ function applySavedConfig(debateName: string) {
 /** Reels must keep the portrait preset, but should inherit the project's visual treatment. */
 function applySavedReelVisualMode(debateName: string) {
   try {
-    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    const project = readProjectDocument(debateName);
     const visualMode = project.config?.visualMode;
     if (visualMode === 'debate' || visualMode === 'infographic') config.visualMode = visualMode;
   } catch (err: any) {

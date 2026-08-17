@@ -5,6 +5,7 @@ import { ensureDir, parseContextFlag, withRetry } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
 import type { ContentMode } from './contentMode';
+import { createProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
 
 const client = new OpenAI();
 
@@ -71,10 +72,16 @@ export async function run(topic: string, context: string = '', contentMode: Cont
 
   const nextNumber = (existing.length > 0 ? Math.max(...existing) : 0) + 1;
   const debateName = `debate${nextNumber}`;
-  const filename = `output/debates/${debateName}.txt`;
-
-  fs.writeFileSync(filename, content, 'utf-8');
-  console.log(`Script saved to ${filename}`);
+  const project = createProjectDocument({
+    id: debateName,
+    title: topic,
+    context,
+    contentMode,
+    script: content,
+  });
+  saveProjectDocument(project);
+  console.log(`Project saved to output/debates/${debateName}.project.json`);
+  console.log(`Text export saved to output/debates/${debateName}.txt`);
 
   const metadata = await generateMetadataIfEnabled(topic, context, content, debateName, contentMode);
 

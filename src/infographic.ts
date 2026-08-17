@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { wrapText } from './utils';
-import { projectPath } from './paths';
 import { readContentMode } from './contentMode';
+import { readProjectDocument } from './infrastructure/storage/localProjectStore';
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'also', 'because', 'been', 'before', 'being', 'between',
@@ -17,8 +17,8 @@ function baseDebateName(name: string): string {
 
 function readTopic(name: string): string {
   try {
-    const project = JSON.parse(fs.readFileSync(projectPath(baseDebateName(name)), 'utf-8'));
-    return typeof project.topic === 'string' && project.topic.trim() ? project.topic.trim() : 'Debate breakdown';
+    const project = readProjectDocument(baseDebateName(name));
+    return project.title.trim() || 'Debate breakdown';
   } catch {
     return 'Debate breakdown';
   }

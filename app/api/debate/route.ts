@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { runStage } from '@/lib/stage';
-import { scriptPath, projectPath } from '@/src/paths';
+import { projectPath } from '@/src/paths';
 import { findMainVideo, findReelVideos, hasAudio } from '@/lib/videos';
+import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';
 
@@ -17,11 +18,11 @@ export async function GET() {
     .flatMap(file => {
       const debateName = file.replace('.project.json', '');
       try {
-        const record = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+        const record = readProjectDocument(debateName);
         const updatedAt = fs.statSync(path.join(dir, file)).mtimeMs;
         return [{
           debateName,
-          topic: typeof record.topic === 'string' ? record.topic : debateName,
+          topic: record.title || debateName,
           updatedAt,
           audioExists: hasAudio(debateName),
           videoExists: findMainVideo(debateName) !== null,
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const script = fs.readFileSync(scriptPath(debateName), 'utf-8');
-  return NextResponse.json({ debateName, topic, context, script });
+  const script = readProjectScriptText(debateName);
+  const project = readProjectDocument(debateName);
+  return NextResponse.json({ debateName, topic, context, script, scenes: project.scenes });
 }

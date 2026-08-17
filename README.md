@@ -37,6 +37,13 @@ One-time social account setup:
 
 Videos upload directly from the laptop to YouTube and Meta. No Cloudflare R2 or other storage service is used.
 
+### Project data
+
+Each project's versioned `output/debates/debateN.project.json` file is its source of
+truth. It contains stable script scenes, visual instructions, metadata, and project
+configuration. The neighboring `.txt` script and `.metadata.md` files are compatibility
+exports. See [the project schema](docs/project-schema.md).
+
 ---
 
 ## Full Pipeline
@@ -309,9 +316,10 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 
 ## Output
 
-- Scripts: `output/debates/debateN.txt`
-- Publishing metadata: `output/debates/debateN.metadata.md` (YouTube title/description/hashtags + 3 reel captions; skipped when `generateMetadata: false`)
-- Thumbnail: `output/debates/debateN.thumbnail.jpg` (1280×720, `thumbnailBackground` + `DEBATE` label + hook text from metadata; skipped when `generateThumbnail: false`)
+- Project source: `output/debates/debateN.project.json`
+- Script compatibility export: `output/debates/debateN.txt`
+- Publishing metadata export: `output/publish/debateN/debateN.metadata.md`
+- Thumbnail: `output/publish/debateN/debateN.thumbnail.jpg`
 - Audio: `output/audios/debateN/`
 - Final videos: `output/videos/reels/` (when `isReelStyle: true`) or `output/videos/others/` (otherwise), named `debateN_TIMESTAMP.mp4`
 - Cost / timing log (JSONL, one run per line): `output/cost_log.jsonl`

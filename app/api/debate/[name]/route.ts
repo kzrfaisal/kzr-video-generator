@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { isValidDebateName } from '@/lib/stage';
-import { scriptPath, publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/paths';
+import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/paths';
 import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/lib/videos';
+import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
+import { metadataToMarkdown } from '@/src/domain/projects/metadata';
 
 export const runtime = 'nodejs';
 
@@ -12,31 +14,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   if (!isValidDebateName(name)) {
     return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
   }
-  if (!fs.existsSync(scriptPath(name))) {
+  if (!fs.existsSync(projectPath(name))) {
     return NextResponse.json({ error: 'Debate not found.' }, { status: 404 });
   }
 
-  const script = fs.readFileSync(scriptPath(name), 'utf-8');
+  const project = readProjectDocument(name);
+  const script = readProjectScriptText(name);
   const mdPath = publishMetadata(name);
-  const metadata = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, 'utf-8') : null;
+  const metadata = fs.existsSync(mdPath)
+    ? fs.readFileSync(mdPath, 'utf-8')
+    : project.metadata ? metadataToMarkdown(project.metadata) : null;
   let publishing = null;
   const publishPath = publishRecordPath(name);
   if (fs.existsSync(publishPath)) {
     try { publishing = JSON.parse(fs.readFileSync(publishPath, 'utf-8')); }
     catch { /* ignore a corrupt publishing receipt */ }
-  }
-
-  let topic = '';
-  let context = '';
-  let savedConfig: Record<string, unknown> | null = null;
-  const pp = projectPath(name);
-  if (fs.existsSync(pp)) {
-    try {
-      const p = JSON.parse(fs.readFileSync(pp, 'utf-8'));
-      topic = p.topic ?? '';
-      context = p.context ?? '';
-      savedConfig = p.config ?? null;
-    } catch { /* ignore a corrupt sidecar */ }
   }
 
   // Reel part scripts that have been extracted (for recovery/editing).
@@ -48,11 +40,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
 
   return NextResponse.json({
     debateName: name,
-    topic,
-    context,
+    topic: project.title,
+    context: project.context,
     script,
+    scenes: project.scenes,
     metadata,
-    config: savedConfig,                  // null until the user changes settings
+    config: project.config,
     thumbnailExists: hasThumbnail(name),
     audioExists: hasAudio(name),
     videoExists: findMainVideo(name) !== null,

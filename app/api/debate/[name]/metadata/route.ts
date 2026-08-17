@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { runStage, isValidDebateName } from '@/lib/stage';
-import { scriptPath, publishDir, publishMetadata } from '@/src/paths';
+import { projectPath, publishDir, publishMetadata } from '@/src/paths';
+import { parseMetadataMarkdown } from '@/src/domain/projects/metadata';
+import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';
 
@@ -11,7 +13,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
   if (!isValidDebateName(name)) {
     return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
   }
-  if (!fs.existsSync(scriptPath(name))) {
+  if (!fs.existsSync(projectPath(name))) {
     return NextResponse.json({ error: 'Generate the script first.' }, { status: 409 });
   }
 
@@ -35,8 +37,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   }
   const body = await req.json().catch(() => ({}));
   const metadata = typeof body.metadata === 'string' ? body.metadata : '';
-
-  fs.mkdirSync(publishDir(name), { recursive: true });
-  fs.writeFileSync(publishMetadata(name), metadata, 'utf-8');
-  return NextResponse.json({ ok: true });
+  try {
+    const project = readProjectDocument(name);
+    project.metadata = parseMetadataMarkdown(metadata);
+    saveProjectDocument(project);
+    fs.mkdirSync(publishDir(name), { recursive: true });
+    fs.writeFileSync(publishMetadata(name), metadata, 'utf-8');
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Invalid metadata.' },
+      { status: 400 },
+    );
+  }
 }

@@ -5,6 +5,8 @@ import { config } from '../config';
 import { ensureDir, withRetry } from './utils';
 import { publishDir, publishMetadata } from './paths';
 import type { ContentMode } from './contentMode';
+import { parseMetadataMarkdown } from './domain/projects/metadata';
+import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
 
 const client = new OpenAI();
 
@@ -43,6 +45,11 @@ export async function generateMetadata(
   const content = response.choices[0].message.content ?? '';
   // Safety net: force every #hashtag in the generated markdown to lowercase.
   const lowered = content.replace(/#[A-Za-z0-9_]+/g, m => m.toLowerCase());
+  const structuredMetadata = parseMetadataMarkdown(lowered);
+
+  const project = readProjectDocument(debateName);
+  project.metadata = structuredMetadata;
+  saveProjectDocument(project);
 
   ensureDir(publishDir(debateName));
   const outFile = publishMetadata(debateName);

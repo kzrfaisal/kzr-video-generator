@@ -4,6 +4,7 @@ import { isValidDebateName } from '@/lib/stage';
 import { projectPath } from '@/src/paths';
 import { STYLES, VIDEO_STYLES } from '@/config';
 import { isValidVoice } from '@/lib/voices';
+import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';
 
@@ -59,8 +60,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
     }
   }
 
-  const project = JSON.parse(fs.readFileSync(pp, 'utf-8'));
+  const project = readProjectDocument(name);
   project.config = c;
-  fs.writeFileSync(pp, JSON.stringify(project, null, 2), 'utf-8');
+  if (c.contentMode) project.contentMode = c.contentMode;
+  saveProjectDocument(project);
   return NextResponse.json({ ok: true });
 }

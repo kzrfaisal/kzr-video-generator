@@ -3,16 +3,16 @@ import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 import { config } from '../config';
-import { ensureDir, parseDebateFile, type DebateLine, withRetry } from './utils';
+import { ensureDir, type DebateLine, withRetry } from './utils';
 import {
-  projectPath,
   reelsPartsPath,
-  scriptPath,
   visualCreditsPath,
   visualPlanPath,
   visualSceneImagePath,
 } from './paths';
 import { readContentMode } from './contentMode';
+import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
+import { scenesToDialogue } from './domain/projects/script';
 
 const client = new OpenAI();
 const LINES_PER_SCENE = 3;
@@ -28,6 +28,7 @@ export interface VisualSource {
 
 export interface VisualScene {
   id: string;
+  scriptSceneIds?: string[];
   lineStart: number;
   lineEnd: number;
   speaker: string;
@@ -49,6 +50,7 @@ export interface VisualPlan {
 
 interface SceneGroup {
   id: string;
+  scriptSceneIds: string[];
   lineStart: number;
   lineEnd: number;
   speaker: string;
@@ -64,12 +66,14 @@ interface PexelsPhoto {
   src: { original: string; landscape?: string; large2x?: string; large?: string };
 }
 
-function groupLines(lines: DebateLine[]): SceneGroup[] {
+function groupLines(lines: DebateLine[], sceneIds: string[]): SceneGroup[] {
   const groups: SceneGroup[] = [];
   for (let start = 0; start < lines.length; start += LINES_PER_SCENE) {
     const slice = lines.slice(start, start + LINES_PER_SCENE);
+    const scriptSceneIds = slice.map((_, offset) => sceneIds[start + offset]).filter(Boolean);
     groups.push({
-      id: `scene-${String(groups.length + 1).padStart(2, '0')}`,
+      id: scriptSceneIds[0] ? `visual-${scriptSceneIds[0]}` : `scene-${String(groups.length + 1).padStart(2, '0')}`,
+      scriptSceneIds,
       lineStart: start,
       lineEnd: start + slice.length - 1,
       speaker: slice[0]?.speaker ?? 'HOST',
@@ -164,8 +168,8 @@ async function attachPhoto(debateName: string, scene: VisualScene): Promise<void
   let photos = await searchPexels(scene.searchQuery);
   if (photos.length === 0) {
     try {
-      const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
-      photos = await searchPexels(String(project.topic || 'people discussion').slice(0, 100));
+      const project = readProjectDocument(debateName);
+      photos = await searchPexels((project.title || 'people discussion').slice(0, 100));
     } catch { /* keep the original no-results error below */ }
   }
   if (photos.length === 0) throw new Error(`No Pexels photos found for “${scene.searchQuery}”.`);
@@ -199,6 +203,31 @@ function savePlan(plan: VisualPlan): void {
   fs.writeFileSync(visualCreditsPath(plan.debateName), credits.join('\n'), 'utf-8');
 }
 
+function syncPlanToProject(plan: VisualPlan): void {
+  const project = readProjectDocument(plan.debateName);
+  for (const visual of plan.scenes) {
+    const ids = new Set(visual.scriptSceneIds ?? project.scenes
+      .slice(visual.lineStart, visual.lineEnd + 1)
+      .map(scene => scene.id));
+    project.scenes = project.scenes.map(scene => {
+      if (!ids.has(scene.id)) return scene;
+      const overlayId = `${scene.id}-headline`;
+      const overlays = scene.overlays.filter(overlay => overlay.id !== overlayId);
+      if (visual.headline) overlays.push({ id: overlayId, type: 'headline', text: visual.headline });
+      return {
+        ...scene,
+        headline: visual.headline,
+        visualQuery: visual.searchQuery,
+        visualType: 'stock-photo',
+        visualAssetPath: visual.imagePath ?? null,
+        overlays,
+        status: visual.error ? 'failed' : visual.imagePath ? 'ready' : 'draft',
+      };
+    });
+  }
+  saveProjectDocument(project);
+}
+
 async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let cursor = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -212,16 +241,16 @@ async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T
 
 export async function generateVisualScenes(debateName: string): Promise<VisualPlan> {
   pexelsKey(); // Fail before spending a model call.
-  const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+  const project = readProjectDocument(debateName);
   const narrated = readContentMode(debateName) === 'narrated-explainer';
-  const lines = parseDebateFile(scriptPath(debateName));
-  const groups = groupLines(lines);
+  const lines = scenesToDialogue(project.scenes);
+  const groups = groupLines(lines, project.scenes.map(scene => scene.id));
   let copy: Array<{ headline: string; searchQuery: string }>;
   try {
-    copy = await createPlanCopy(project.topic ?? debateName, project.context ?? '', groups, narrated);
+    copy = await createPlanCopy(project.title || debateName, project.context, groups, narrated);
   } catch (error) {
     console.warn(`Visual copy planning failed; using local fallback: ${error instanceof Error ? error.message : error}`);
-    copy = groups.map(group => ({ headline: 'Key point', searchQuery: fallbackQuery(project.topic ?? '', group.text) }));
+    copy = groups.map(group => ({ headline: 'Key point', searchQuery: fallbackQuery(project.title, group.text) }));
   }
 
   const plan: VisualPlan = {
@@ -231,6 +260,7 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
     createdAt: new Date().toISOString(),
     scenes: groups.map((group, index) => ({
       id: group.id,
+      scriptSceneIds: group.scriptSceneIds,
       lineStart: group.lineStart,
       lineEnd: group.lineEnd,
       speaker: group.speaker,
@@ -246,6 +276,7 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
     savePlan(plan);
   });
   savePlan(plan);
+  syncPlanToProject(plan);
   const missing = plan.scenes.filter(scene => !scene.imagePath);
   if (missing.length > 0) {
     throw new Error(`${missing.length} visual scene${missing.length === 1 ? '' : 's'} could not be downloaded. Review and replace the missing scenes.`);
@@ -275,6 +306,7 @@ export async function regenerateVisualScene(debateName: string, sceneId: string,
   }
   await attachPhoto(debateName, scene);
   savePlan(plan);
+  syncPlanToProject(plan);
   return scene;
 }
 

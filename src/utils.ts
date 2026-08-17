@@ -1,10 +1,11 @@
 import fs from 'fs';
 import readline from 'readline';
+import path from 'path';
+import { scenesToDialogue } from './domain/projects/script';
+import { readProjectDocument } from './infrastructure/storage/localProjectStore';
+import { projectPath } from './paths';
 
-export interface DebateLine {
-  speaker: string;
-  text: string;
-}
+export interface DebateLine { speaker: string; text: string; }
 
 export function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -109,6 +110,13 @@ function sanitizeText(text: string): string {
 // Parse a debate .txt file into DebateLine[].
 // Validates every non-empty line matches SPEAKER|text format.
 export function parseDebateFile(filePath: string): DebateLine[] {
+  const normalized = path.normalize(filePath);
+  const parent = path.basename(path.dirname(normalized));
+  const name = path.basename(normalized, path.extname(normalized));
+  if (parent === 'debates' && fs.existsSync(projectPath(name))) {
+    return scenesToDialogue(readProjectDocument(name).scenes);
+  }
+
   const raw = fs.readFileSync(filePath, 'utf-8');
   const lines = raw.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
   const result: DebateLine[] = [];
