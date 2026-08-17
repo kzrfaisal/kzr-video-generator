@@ -73,6 +73,7 @@ interface Debate {
 }
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
+type Theme = 'light' | 'dark';
 type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 interface JobView { id: string; kind: JobKind; stage: string; status: string; logs?: string[]; error?: string; }
 
@@ -89,9 +90,10 @@ interface ProjectSummary {
 type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'awaiting-visuals' | 'running' | 'awaiting-reels';
 
 const LS_KEY = 'activeDebate';
+const THEME_KEY = 'kzr-theme';
 const DEFAULT_CFG: RunConfig = {
-  contentMode: 'debate',
-  visualMode: 'debate',
+  contentMode: 'narrated-explainer',
+  visualMode: 'infographic',
   voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -136,10 +138,15 @@ export default function Home() {
   const [visualsConfigured, setVisualsConfigured] = useState(true);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const [previewing, setPreviewing] = useState('');
+  const [theme, setTheme] = useState<Theme>('light');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    const nextTheme: Theme = savedTheme === 'dark' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
     fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
     refreshProjects();
     const name = localStorage.getItem(LS_KEY);
@@ -149,6 +156,13 @@ export default function Home() {
     });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  function toggleTheme() {
+    const nextTheme: Theme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem(THEME_KEY, nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+  }
 
   useEffect(() => {
     if (debate?.debateName) refreshVisuals(debate.debateName);
@@ -520,11 +534,22 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand">KZR Video Studio</div>
-        <button className="new-project" onClick={startNew} disabled={working}>＋ New project</button>
-        <div className="sidebar-label">Recent projects</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">▶</span>
+          <span>KZR Video Studio<small>AI video creator</small></span>
+        </div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          <button className={`nav-item ${!debate ? 'active' : ''}`} onClick={startNew} disabled={working}>
+            <span aria-hidden="true">⌂</span> Home
+          </button>
+          <button className={`nav-item ${debate ? 'active' : ''}`} onClick={() => document.getElementById('recent-projects')?.scrollIntoView({ behavior: 'smooth' })}>
+            <span aria-hidden="true">□</span> Projects
+          </button>
+        </nav>
+        <button className="new-project" onClick={startNew} disabled={working}><span>＋</span> New project</button>
+        <div className="sidebar-label" id="recent-projects">Recent projects</div>
         <div className="project-list">
-          {projects.length === 0 && <p className="empty-projects">No projects yet.</p>}
+          {projects.length === 0 && <p className="empty-projects">Your projects will appear here.</p>}
           {projects.map(project => (
             <button
               key={project.debateName}
@@ -532,19 +557,35 @@ export default function Home() {
               onClick={() => openProject(project.debateName)}
               disabled={working}
             >
+              <span className="project-icon" aria-hidden="true">▶</span>
               <span>{project.topic}</span>
               <small>{project.videoExists ? `Video · ${project.reelsCount}/3 shorts` : project.audioExists ? 'Audio ready' : 'Draft'}</small>
             </button>
           ))}
         </div>
+        <div className="sidebar-footer">
+          <span className="status-dot" aria-hidden="true" />
+          Running locally
+        </div>
       </aside>
       <div className="workspace">
-      <div className="head-row">
+      <header className="topbar">
         <div>
-          <h1>{debate ? debate.topic || debate.debateName : 'Create a video pack'}</h1>
-          <p className="sub">{debate ? debate.debateName : 'One topic becomes a landscape video and three vertical shorts.'}</p>
+          <span className="eyebrow">{debate ? 'Project workspace' : 'Creator workspace'}</span>
+          {debate && <span className="saved-state"><span className="status-dot" /> Saved locally</span>}
         </div>
-        {debate && <button className="btn-secondary" onClick={startNew} disabled={working}>Start new</button>}
+        <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
+          <span aria-hidden="true">{theme === 'light' ? '☾' : '☀'}</span>
+          {theme === 'light' ? 'Dark' : 'Light'} mode
+        </button>
+      </header>
+
+      <div className={`page-heading ${debate ? 'project-heading' : ''}`}>
+        <div>
+          <h1>{debate ? debate.topic || debate.debateName : 'Create your next video'}</h1>
+          <p className="sub">{debate ? 'Review each stage, make changes, and render when you are ready.' : 'Start with an idea. We will guide you through the rest.'}</p>
+        </div>
+        {debate && <button className="btn-secondary compact" onClick={startNew} disabled={working}>＋ New project</button>}
       </div>
 
       {renderElsewhere && (
@@ -564,52 +605,90 @@ export default function Home() {
         </div>
       )}
 
-      {/* 1 — Topic */}
-      <section className="panel">
-        <h2 className="step-title">1 · Title and context</h2>
-        <label htmlFor="topic">Video title/topic</label>
-        <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
-               placeholder="e.g. AI replacing teachers" disabled={working || !!debate} />
-        <label htmlFor="context">Context <span className="optional">(optional)</span></label>
-        <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
-                  placeholder="Optional angle, facts, events, or details to include…"
-                  disabled={working || !!debate} />
-        {!debate && (
-          <>
-            <label htmlFor="content-format">Content format</label>
-            <select id="content-format" value={cfg.contentMode} disabled={working}
-                    onChange={e => setCfg(c => ({ ...c, contentMode: e.target.value as RunConfig['contentMode'] }))}>
-              <option value="narrated-explainer">Narrated explainer</option>
-              <option value="debate">Two-sided debate</option>
-            </select>
-            <label htmlFor="visual-format">Visual format</label>
-            <select id="visual-format" value={cfg.visualMode} disabled={working}
-                    onChange={e => {
-                      const visualMode = e.target.value as RunConfig['visualMode'];
-                      setCfg(c => ({
-                        ...c,
-                        visualMode,
-                        contentMode: visualMode === 'infographic' ? 'narrated-explainer' : 'debate',
-                      }));
-                    }}>
-              <option value="debate">Character debate</option>
-              <option value="infographic">Infographic cards</option>
-            </select>
-            <div className="row">
-              <button onClick={generateAll} disabled={working || renderElsewhere}>
-                {(busy === 'auto' || (busy === 'script' && auto)) ? 'Creating pack…' : 'Create full video pack'}
-              </button>
-              <button onClick={generateScript} disabled={working}>
-                {busy === 'script' && !auto ? 'Generating…' : 'Generate script only'}
-              </button>
+      {!debate && (
+        <section className="panel create-panel">
+          <div className="section-heading">
+            <span className="section-icon" aria-hidden="true">✦</span>
+            <div>
+              <h2>Start with the basics</h2>
+              <p>Only a title is required. You can review everything before rendering.</p>
             </div>
-            <label className="check">
-              <input type="checkbox" checked={nonstop} onChange={e => setNonstop(e.target.checked)} disabled={working} />
-              Skip script and metadata reviews and run automatically
-            </label>
-          </>
-        )}
-      </section>
+          </div>
+
+          <div className="form-step">
+            <div className="step-badge">1</div>
+            <div className="step-content">
+              <label htmlFor="topic">What is your video about?</label>
+              <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
+                     placeholder="e.g. How Ancient Rome shaped the modern world" disabled={working} />
+              <label htmlFor="context">Add helpful context <span className="optional">Optional</span></label>
+              <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
+                        placeholder="Mention the angle, facts, audience, or tone you want…"
+                        disabled={working} />
+            </div>
+          </div>
+
+          <div className="form-step">
+            <div className="step-badge">2</div>
+            <div className="step-content">
+              <label>Choose a format</label>
+              <div className="format-grid" role="radiogroup" aria-label="Video format">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={cfg.contentMode === 'narrated-explainer'}
+                  className={`format-card ${cfg.contentMode === 'narrated-explainer' ? 'selected' : ''}`}
+                  onClick={() => setCfg(c => ({ ...c, contentMode: 'narrated-explainer', visualMode: 'infographic' }))}
+                  disabled={working}
+                >
+                  <span className="format-icon explainer" aria-hidden="true">▶</span>
+                  <span><strong>Explainer</strong><small>One narrator with topic-based visuals</small></span>
+                  <span className="radio-dot" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={cfg.contentMode === 'debate'}
+                  className={`format-card ${cfg.contentMode === 'debate' ? 'selected' : ''}`}
+                  onClick={() => setCfg(c => ({ ...c, contentMode: 'debate', visualMode: 'debate' }))}
+                  disabled={working}
+                >
+                  <span className="format-icon debate" aria-hidden="true">●●</span>
+                  <span><strong>Debate</strong><small>Two sides discuss one topic</small></span>
+                  <span className="radio-dot" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-step output-step">
+            <div className="step-badge">3</div>
+            <div className="step-content">
+              <label>Your video pack</label>
+              <div className="output-summary">
+                <span className="output-icon" aria-hidden="true">▣</span>
+                <span><strong>1 full video + 3 short videos</strong><small>Ready to review, download, or publish</small></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="create-actions">
+            <details className="advanced-options">
+              <summary>Advanced options</summary>
+              <label className="check">
+                <input type="checkbox" checked={nonstop} onChange={e => setNonstop(e.target.checked)} disabled={working} />
+                Skip reviews and run the complete pipeline automatically
+              </label>
+              <button className="text-button" onClick={generateScript} disabled={working}>
+                {busy === 'script' && !auto ? 'Generating…' : 'Generate only the script'}
+              </button>
+            </details>
+            <button className="primary-action" onClick={generateAll} disabled={working || renderElsewhere || !topic.trim()}>
+              {(busy === 'auto' || (busy === 'script' && auto)) ? 'Creating your draft…' : 'Generate draft'} <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </section>
+      )}
 
       {error && <div className="error">{error}</div>}
 
