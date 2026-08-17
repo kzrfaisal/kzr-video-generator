@@ -56,7 +56,7 @@ export async function buildReelsFromParts(debateName: string, parts: ExtractedPa
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    const outroMp3 = await ensureOutroAudio(i as 0 | 1 | 2);
+    const outroMp3 = await ensureOutroAudio(i as 0 | 1 | 2, part.contentMode ?? 'debate');
     console.log(`\nCopying audio for ${part.name} (${part.origLineIndices.length} lines + outro)...`);
     copyPartAudio(srcAudioDir, srcFiles, part, outroMp3);
 

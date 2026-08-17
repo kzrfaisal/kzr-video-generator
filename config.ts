@@ -115,6 +115,8 @@ export interface Config {
   videoStyle: string;
   /** Visual treatment for each scene: character debate backgrounds or generated infographic cards. */
   visualMode: 'debate' | 'infographic';
+  /** Editorial structure: a two-sided discussion or a single-narrator explainer. */
+  contentMode: 'debate' | 'narrated-explainer';
   /** Speaker → image path used for that speaker's segments */
   images: Record<string, string>;
 
@@ -182,6 +184,7 @@ const baseConfig: Config = {
 
   videoStyle: 'style1',
   visualMode: 'debate',
+  contentMode: 'debate',
   images: {
     HOST: 'assets/images/image_H.png',
     A: 'assets/images/image_A.png',
@@ -320,6 +323,7 @@ export const config: Config = {
 export interface RunOverrides {
   videoStyle?: string;                 // a VIDEO_STYLES key (e.g. style1 / style2)
   visualMode?: 'debate' | 'infographic';
+  contentMode?: 'debate' | 'narrated-explainer';
   voices?: Partial<Config['voices']>;  // per-speaker OpenAI voice
   ttsModel?: string;                   // 'tts-1' | 'tts-1-hd'
   ttsSpeed?: number;                   // 0.25–4.0
@@ -340,6 +344,7 @@ export function configureRun(o: RunOverrides): void {
   const merged: Config = { ...baseConfig, ...VIDEO_STYLES[style], videoStyle: style };
 
   if (o.visualMode) merged.visualMode = o.visualMode;
+  if (o.contentMode) merged.contentMode = o.contentMode;
 
   if (o.voices) {
     merged.voices = { ...merged.voices };

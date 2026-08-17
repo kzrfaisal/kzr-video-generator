@@ -12,6 +12,7 @@ import {
   visualPlanPath,
   visualSceneImagePath,
 } from './paths';
+import { readContentMode } from './contentMode';
 
 const client = new OpenAI();
 const LINES_PER_SCENE = 3;
@@ -84,9 +85,14 @@ function fallbackQuery(topic: string, text: string): string {
   return [...useful, ...topic.split(/\s+/).slice(0, 3)].slice(0, 6).join(' ') || 'people discussion';
 }
 
-async function createPlanCopy(topic: string, context: string, groups: SceneGroup[]): Promise<Array<{ headline: string; searchQuery: string }>> {
+async function createPlanCopy(
+  topic: string,
+  context: string,
+  groups: SceneGroup[],
+  narrated: boolean,
+): Promise<Array<{ headline: string; searchQuery: string }>> {
   const compact = groups.map(group => ({ id: group.id, narration: group.text }));
-  const prompt = `Create stock-photo directions for a debate infographic video.
+  const prompt = `Create stock-photo directions for a ${narrated ? 'single-narrator documentary explainer' : 'debate infographic'} video.
 
 Topic: ${topic}
 Context: ${context || '(none)'}
@@ -94,7 +100,7 @@ Scenes: ${JSON.stringify(compact)}
 
 Return JSON only in this shape: {"scenes":[{"id":"scene-01","headline":"2-5 words","searchQuery":"3-7 concrete visual words"}]}.
 Return exactly one entry per supplied scene and keep the same IDs and order.
-Search queries must describe a photograph Pexels is likely to contain. Prefer concrete people, places, objects, and actions. Avoid abstract words, opinions, names, logos, text in images, and the words debate or infographic. Make adjacent scenes visually distinct.`;
+Search queries must describe a photograph Pexels is likely to contain. Prefer concrete people, places, objects, locations, time periods, and actions that accurately support the narration. Avoid abstract words, opinions, logos, text in images, and the words debate or infographic. Make adjacent scenes visually distinct.`;
 
   const response = await withRetry(() => client.chat.completions.create({
     model: config.scriptModel,
@@ -207,11 +213,12 @@ async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T
 export async function generateVisualScenes(debateName: string): Promise<VisualPlan> {
   pexelsKey(); // Fail before spending a model call.
   const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+  const narrated = readContentMode(debateName) === 'narrated-explainer';
   const lines = parseDebateFile(scriptPath(debateName));
   const groups = groupLines(lines);
   let copy: Array<{ headline: string; searchQuery: string }>;
   try {
-    copy = await createPlanCopy(project.topic ?? debateName, project.context ?? '', groups);
+    copy = await createPlanCopy(project.topic ?? debateName, project.context ?? '', groups, narrated);
   } catch (error) {
     console.warn(`Visual copy planning failed; using local fallback: ${error instanceof Error ? error.message : error}`);
     copy = groups.map(group => ({ headline: 'Key point', searchQuery: fallbackQuery(project.topic ?? '', group.text) }));

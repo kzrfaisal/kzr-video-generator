@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Debate Video Generator',
-  description: 'Generate a debate video from a topic.',
+  title: 'KZR Video Studio',
+  description: 'Generate narrated explainers and debate videos from a topic.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

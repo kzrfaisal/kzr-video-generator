@@ -3,7 +3,9 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { config } from '../config';
 import { ensureDir, wrapText } from './utils';
-import { publishDir, publishMetadata, publishThumbnail } from './paths';
+import { projectPath, publishDir, publishMetadata, publishThumbnail } from './paths';
+import { readContentMode } from './contentMode';
+import { readVisualPlan } from './visualScenes';
 
 const THUMB_W = 1280;
 const THUMB_H = 720;
@@ -12,6 +14,70 @@ const THUMB_H = 720;
 const HOOK_USABLE_W = 1180;  // canvas width minus side margins
 const HOOK_CHAR_K = 0.8;     // approx glyph-width / fontsize for the thumbnail font (calibrated)
 const HOOK_MIN_FONT = 38;    // don't shrink below this — wrap instead
+
+function isInfographicProject(debateName: string): boolean {
+  try {
+    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    return project.config?.visualMode === 'infographic';
+  } catch {
+    return false;
+  }
+}
+
+/** Topic-photo thumbnail used by the single-narrator infographic workflow. */
+function generateExplainerThumbnail(debateName: string, hook: string, fontfile: string): void {
+  const scene = readVisualPlan(debateName)?.scenes.find(item => item.imagePath && fs.existsSync(item.imagePath));
+  if (!scene?.imagePath) {
+    throw new Error('Generate the infographic visual scenes before creating its thumbnail.');
+  }
+
+  const safeName = debateName.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const hookLines = wrapText(hook.toUpperCase(), 18).slice(0, 3);
+  const longest = Math.max(...hookLines.map(line => line.length));
+  const hookSize = Math.min(64, Math.max(42, Math.floor(590 / (longest * 0.72))));
+  const lineHeight = Math.round(hookSize * 1.22);
+  const blockHeight = hookLines.length * lineHeight;
+  const blockY = Math.round((THUMB_H - blockHeight) / 2) + 35;
+  const tempFiles: string[] = [];
+  const filters: string[] = [
+    `scale=${THUMB_W}:${THUMB_H}:force_original_aspect_ratio=increase`,
+    `crop=${THUMB_W}:${THUMB_H}:x=(in_w-out_w)/2:y=(in_h-out_h)/2`,
+    'eq=contrast=1.06:brightness=-0.04:saturation=1.08',
+    'drawbox=x=0:y=0:w=720:h=720:color=0x020812@0.78:t=fill',
+    'drawbox=x=720:y=0:w=560:h=720:color=0x020812@0.10:t=fill',
+    'drawbox=x=64:y=68:w=8:h=48:color=0x22d3ee@1:t=fill',
+    `drawtext=fontfile=${fontfile}:text=VISUAL EXPLAINER:fontcolor=white@0.92:fontsize=26:x=91:y=76`,
+  ];
+
+  hookLines.forEach((line, index) => {
+    const file = path.resolve(`tmp/thumb_explainer_${safeName}_${index}.txt`);
+    fs.writeFileSync(file, line, 'utf-8');
+    tempFiles.push(file);
+    filters.push([
+      `drawtext=fontfile=${fontfile}`,
+      `textfile=${file}`,
+      'expansion=none',
+      'fontcolor=white',
+      `fontsize=${hookSize}`,
+      'x=64',
+      `y=${blockY + index * lineHeight}`,
+      'shadowcolor=black@0.75',
+      'shadowx=3',
+      'shadowy=3',
+    ].join(':'));
+  });
+  filters.push('drawbox=x=64:y=640:w=170:h=6:color=0x22d3ee@1:t=fill');
+
+  ensureDir(publishDir(debateName));
+  const outPath = publishThumbnail(debateName);
+  const result = spawnSync('ffmpeg', [
+    '-y', '-i', scene.imagePath, '-vf', filters.join(','),
+    '-frames:v', '1', '-update', '1', outPath,
+  ], { stdio: 'inherit' });
+  tempFiles.forEach(file => { try { fs.unlinkSync(file); } catch {} });
+  if (result.status !== 0) throw new Error(`ffmpeg failed for thumbnail: ${outPath}`);
+  console.log(`Explainer thumbnail saved to ${outPath}`);
+}
 
 function readHookFromMetadata(debateName: string): string {
   const mdPath = publishMetadata(debateName);
@@ -37,16 +103,23 @@ function readHookFromMetadata(debateName: string): string {
 export function generateThumbnail(debateName: string): void {
   const hook = readHookFromMetadata(debateName);
 
-  const bg = config.thumbnailBackground;
-  if (!fs.existsSync(bg)) {
-    throw new Error(`Thumbnail background image not found: ${bg}`);
-  }
-
   const tf = config.thumbnailFont;
   const fontfile = path.resolve(tf.font);
   if (!fs.existsSync(fontfile)) {
     throw new Error(`Thumbnail font not found: ${fontfile}`);
   }
+
+  if (readContentMode(debateName) === 'narrated-explainer' && isInfographicProject(debateName)) {
+    ensureDir('tmp');
+    generateExplainerThumbnail(debateName, hook, fontfile);
+    return;
+  }
+
+  const bg = config.thumbnailBackground;
+  if (!fs.existsSync(bg)) {
+    throw new Error(`Thumbnail background image not found: ${bg}`);
+  }
+
   // ffmpeg filter values pass through two parsers (filtergraph + filter option),
   // so ':' inside text must be escaped as '\\:' to survive both layers.
   const escapeInline = (s: string) =>
@@ -54,7 +127,7 @@ export function generateThumbnail(debateName: string): void {
      .replace(/:/g, '\\\\:')
      .replace(/'/g, "\\\\'")
      .replace(/%/g, '\\\\%');
-  const labelText = escapeInline('DEBATE');
+  const labelText = escapeInline(readContentMode(debateName) === 'narrated-explainer' ? 'EXPLAINER' : 'DEBATE');
 
   // Decide the lines to render and the font size:
   //  - multiple lines in the hook → follow them, sized to the WIDEST line;

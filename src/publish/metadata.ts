@@ -19,9 +19,9 @@ export function parseSocialMetadata(markdown: string): SocialMetadata {
   const youtubeDescription = section(markdown, 'YouTube Description');
   const hashtags = section(markdown, 'Hashtags');
   const reelCaptions = [
-    section(markdown, 'Reel 1 — Opening Caption'),
-    section(markdown, 'Reel 2 — Rebuttals Caption'),
-    section(markdown, 'Reel 3 — Closing Caption'),
+    section(markdown, 'Reel 1 — Opening Caption') || section(markdown, 'Reel 1 — Hook Caption'),
+    section(markdown, 'Reel 2 — Rebuttals Caption') || section(markdown, 'Reel 2 — Key Insight Caption'),
+    section(markdown, 'Reel 3 — Closing Caption') || section(markdown, 'Reel 3 — Takeaway Caption'),
   ];
 
   if (!youtubeTitle || !youtubeDescription || reelCaptions.some(caption => !caption)) {

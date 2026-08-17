@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { ensureDir, parseContextFlag, withRetry } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
+import type { ContentMode } from './contentMode';
 
 const client = new OpenAI();
 
@@ -17,17 +18,18 @@ async function generateMetadataIfEnabled(
   context: string,
   scriptContent: string,
   debateName: string,
+  contentMode: ContentMode,
 ): Promise<MetadataResult> {
   if (!config.generateMetadata) return EMPTY_METADATA;
   try {
-    return await generateMetadata(topic, context, scriptContent, debateName);
+    return await generateMetadata(topic, context, scriptContent, debateName, contentMode);
   } catch (err: any) {
     console.warn(`Metadata generation failed (non-fatal): ${err.message}`);
     return EMPTY_METADATA;
   }
 }
 
-export async function run(topic: string, context: string = ''): Promise<{
+export async function run(topic: string, context: string = '', contentMode: ContentMode = 'debate'): Promise<{
   debateName: string;
   promptTokens: number;
   completionTokens: number;
@@ -36,7 +38,10 @@ export async function run(topic: string, context: string = ''): Promise<{
 }> {
   ensureDir('output/debates');
 
-  const promptTemplate = fs.readFileSync(config.promptFile, 'utf-8');
+  const promptFile = contentMode === 'narrated-explainer'
+    ? 'source/explainer_prompt.txt'
+    : config.promptFile;
+  const promptTemplate = fs.readFileSync(promptFile, 'utf-8');
   const prompt = promptTemplate
     .replace('{topic}', topic)
     .replace('{context}', context)
@@ -51,7 +56,10 @@ export async function run(topic: string, context: string = ''): Promise<{
 
   const lines = content.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
   for (const line of lines) {
-    if (!/^(HOST|A|B)\|.+$/.test(line)) {
+    const valid = contentMode === 'narrated-explainer'
+      ? /^HOST\|.+$/.test(line)
+      : /^(HOST|A|B)\|.+$/.test(line);
+    if (!valid) {
       throw new Error(`LLM returned an invalid line: "${line}"`);
     }
   }
@@ -68,7 +76,7 @@ export async function run(topic: string, context: string = ''): Promise<{
   fs.writeFileSync(filename, content, 'utf-8');
   console.log(`Script saved to ${filename}`);
 
-  const metadata = await generateMetadataIfEnabled(topic, context, content, debateName);
+  const metadata = await generateMetadataIfEnabled(topic, context, content, debateName, contentMode);
 
   const usage = response.usage!;
   const scriptCost =
@@ -85,7 +93,9 @@ if (require.main === module) {
     process.exit(1);
   }
   const context = parseContextFlag() ?? '';
-  run(topic, context).then(({ debateName, promptTokens, completionTokens, scriptCost, metadata }) => {
+  const modeArg = process.argv.find(arg => arg.startsWith('--content-mode='))?.split('=')[1];
+  const contentMode: ContentMode = modeArg === 'narrated-explainer' ? 'narrated-explainer' : 'debate';
+  run(topic, context, contentMode).then(({ debateName, promptTokens, completionTokens, scriptCost, metadata }) => {
     console.log(`[${debateName}] Script cost: input ${promptTokens} tokens, output ${completionTokens} tokens, $${scriptCost.toFixed(6)}`);
     if (metadata.cost > 0) {
       console.log(`[${debateName}] Metadata cost: input ${metadata.promptTokens} tokens, output ${metadata.completionTokens} tokens, $${metadata.cost.toFixed(6)}`);

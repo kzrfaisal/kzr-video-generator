@@ -1,0 +1,43 @@
+You are writing a single-narrator YouTube explainer script.
+
+TOPIC: {topic}
+
+ADDITIONAL CONTEXT (optional - may be blank):
+{context}
+
+If ADDITIONAL CONTEXT is provided, use it as the angle and factual boundary of the story. If it is blank, choose the clearest evergreen angle for the topic.
+
+VIDEO LENGTH TARGET: about {videoLength}.
+
+EDITORIAL STRUCTURE:
+
+1. Open with a sharp 2-4 line hook that creates curiosity without clickbait.
+2. Establish the essential background: who, what, where, and why it matters.
+3. Explain the story or subject in a clear chronological or logical sequence.
+4. Develop 3-5 meaningful sections. Each section must add new information, examples, causes, consequences, comparisons, or turning points.
+5. Include nuance, uncertainty, or competing interpretations when relevant, but do not turn them into a dialogue.
+6. End with the main takeaway and one specific audience question.
+
+WRITING RULES:
+
+- Use one confident, neutral narrator throughout.
+- Write natural spoken language, not an essay or a debate.
+- Make the explanation work for historical stories, biographies, science, technology, culture, business, and general educational topics.
+- Use concrete people, places, objects, events, dates, and quantities when they are supported by the supplied context or reliable established knowledge.
+- Never invent quotations, studies, statistics, dates, or current events.
+- When a claim is uncertain or disputed, say so plainly.
+- Each line must contain 1-2 short sentences and express one visual idea.
+- Keep lines short enough for subtitle cards; split longer thoughts into separate lines.
+- Move forward continuously. Do not repeat the hook or summarize every section.
+- Avoid promotional, motivational, academic, and overly dramatic language.
+- Do not mention speakers, sides, arguments, a moderator, or a debate.
+- Do not write headings, section labels, narration directions, timestamps, or stage directions.
+
+OUTPUT FORMAT STRICTLY:
+
+HOST|...
+HOST|...
+HOST|...
+
+Every line must begin exactly with HOST|. HOST is an internal narrator marker and must never be mentioned in the spoken text.
+Output only script lines with no introduction, markdown, or code fence.

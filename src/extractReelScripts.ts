@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { ensureDir, parseDebateFile, DebateLine } from './utils';
-import { HOST_OUTRO_TEXT } from './reelOutro';
+import { outroText } from './reelOutro';
+import { readContentMode, type ContentMode } from './contentMode';
 
 type Block = { speaker: string; texts: string[]; origIndices: number[] };
 
@@ -8,7 +9,32 @@ export type ExtractedPart = {
   name: string;
   filePath: string;
   origLineIndices: number[];
+  contentMode?: ContentMode;
 };
+
+function explainerParts(debateName: string, lines: DebateLine[]): ExtractedPart[] {
+  if (lines.length < 3) throw new Error('The explainer needs at least three narration lines to create shorts.');
+  const cuts = [0, Math.round(lines.length / 3), Math.round(lines.length * 2 / 3), lines.length];
+  const reelsDir = 'output/debates/reels';
+  ensureDir(reelsDir);
+  return ([0, 1, 2] as const).map(partIndex => {
+    const start = cuts[partIndex];
+    const end = cuts[partIndex + 1];
+    const selected = lines.slice(start, end);
+    const name = `${debateName}_part${partIndex + 1}`;
+    const filePath = `${reelsDir}/${name}.txt`;
+    const script = selected.map(line => `HOST|${line.text}`).join('\n')
+      + `\n\nHOST|${outroText(partIndex, 'narrated-explainer')}\n`;
+    fs.writeFileSync(filePath, script, 'utf-8');
+    console.log(`Wrote: ${filePath}`);
+    return {
+      name,
+      filePath,
+      origLineIndices: selected.map((_, index) => start + index),
+      contentMode: 'narrated-explainer' as const,
+    };
+  });
+}
 
 function groupBlocks(lines: DebateLine[]): Block[] {
   const blocks: Block[] = [];
@@ -48,6 +74,8 @@ export function extract(debateName: string): ExtractedPart[] {
   }
 
   const lines = parseDebateFile(inputFile);
+  const contentMode = readContentMode(debateName);
+  if (contentMode === 'narrated-explainer') return explainerParts(debateName, lines);
   const blocks = groupBlocks(lines);
 
   const expected = ['HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B'];
@@ -79,11 +107,11 @@ export function extract(debateName: string): ExtractedPart[] {
     const filePath = `${reelsDir}/${name}.txt`;
     // Append a HOST outro line so each reel ends with an engagement prompt.
     // Its audio is supplied separately by ensureOutroAudio(partIndex) at reel-build time.
-    const script = blocksToScript(partBlocks) + `HOST|${HOST_OUTRO_TEXT[partIndex as 0 | 1 | 2]}\n`;
+    const script = blocksToScript(partBlocks) + `HOST|${outroText(partIndex as 0 | 1 | 2, 'debate')}\n`;
     fs.writeFileSync(filePath, script, 'utf-8');
     console.log(`Wrote: ${filePath}`);
     const origLineIndices = partBlocks.flatMap(b => b.origIndices);
-    return { name, filePath, origLineIndices };
+    return { name, filePath, origLineIndices, contentMode };
   });
 
   return parts;

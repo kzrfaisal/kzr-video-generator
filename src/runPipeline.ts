@@ -23,6 +23,7 @@ import { config, configureRun } from '../config';
 import { publishDir, publishThumbnail, scriptPath, projectPath, reelsPartsPath } from './paths';
 import { publishAll, type PublishTarget } from './publish/publishAll';
 import { generateVisualScenes } from './visualScenes';
+import { normalizeContentMode, type ContentMode } from './contentMode';
 
 export type Stage = 'script' | 'thumbnail' | 'visuals' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
 
@@ -51,12 +52,17 @@ function findReels(debateName: string): string[] {
 export async function runScriptPhase(
   topic: string,
   context: string = '',
+  contentMode: ContentMode = 'debate',
   onStage: (stage: Stage) => void = () => {},
 ): Promise<string> {
   onStage('script');
   config.generateMetadata = false; // metadata is a separate step
-  const { debateName } = await generateScript(topic, context);
-  fs.writeFileSync(projectPath(debateName), JSON.stringify({ topic, context }, null, 2), 'utf-8');
+  const { debateName } = await generateScript(topic, context, contentMode);
+  fs.writeFileSync(projectPath(debateName), JSON.stringify({
+    topic,
+    context,
+    config: { contentMode },
+  }, null, 2), 'utf-8');
   return debateName;
 }
 
@@ -64,7 +70,13 @@ export async function runScriptPhase(
 export async function runMetadataPhase(debateName: string): Promise<void> {
   const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
   const scriptContent = fs.readFileSync(scriptPath(debateName), 'utf-8');
-  await generateMetadata(project.topic, project.context ?? '', scriptContent, debateName);
+  await generateMetadata(
+    project.topic,
+    project.context ?? '',
+    scriptContent,
+    debateName,
+    normalizeContentMode(project.config?.contentMode),
+  );
 }
 
 /** Apply this debate's saved per-run config (voices, TTS, subtitle/video style). */
@@ -130,7 +142,9 @@ if (require.main === module) {
     const topic = process.argv[3];
     if (!topic) fail('Usage: tsx src/runPipeline.ts script "<topic>" [--context=…]');
     const context = parseContextFlag() ?? '';
-    runScriptPhase(topic, context, emit)
+    const contentModeArg = process.argv.find(arg => arg.startsWith('--content-mode='))?.split('=')[1];
+    const contentMode = normalizeContentMode(contentModeArg);
+    runScriptPhase(topic, context, contentMode, emit)
       .then(debateName => console.log(`@@DEBATE@@ ${debateName}`))
       .catch(die);
 

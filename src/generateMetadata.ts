@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { config } from '../config';
 import { ensureDir, withRetry } from './utils';
 import { publishDir, publishMetadata } from './paths';
+import type { ContentMode } from './contentMode';
 
 const client = new OpenAI();
 
@@ -23,8 +24,12 @@ export async function generateMetadata(
   context: string,
   scriptContent: string,
   debateName: string,
+  contentMode: ContentMode = 'debate',
 ): Promise<MetadataResult> {
-  const promptTemplate = fs.readFileSync(METADATA_PROMPT_FILE, 'utf-8');
+  const promptFile = contentMode === 'narrated-explainer'
+    ? 'source/explainer_metadata_prompt.txt'
+    : METADATA_PROMPT_FILE;
+  const promptTemplate = fs.readFileSync(promptFile, 'utf-8');
   const prompt = promptTemplate
     .replace('{topic}', topic)
     .replace('{context}', context)

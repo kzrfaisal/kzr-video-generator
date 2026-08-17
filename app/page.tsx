@@ -28,6 +28,7 @@ interface CustomSubtitle {
 }
 
 interface RunConfig {
+  contentMode: 'debate' | 'narrated-explainer';
   visualMode: 'debate' | 'infographic';
   voices: { HOST: string; A: string; B: string };
   ttsModel: string;
@@ -89,6 +90,7 @@ type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'awaiting-visua
 
 const LS_KEY = 'activeDebate';
 const DEFAULT_CFG: RunConfig = {
+  contentMode: 'debate',
   visualMode: 'debate',
   voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
   ttsModel: 'tts-1',
@@ -284,7 +286,7 @@ export default function Home() {
     const selectedConfig = buildConfigPayload();
     const data = await jsonOrThrow(await fetch('/api/debate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, context }),
+      body: JSON.stringify({ topic, context, contentMode: selectedConfig.contentMode }),
     }));
     await jsonOrThrow(await fetch(`/api/debate/${data.debateName}/config`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -392,8 +394,8 @@ export default function Home() {
         try {
           const name = await rawScript();
           await rawMetadata(name);
-          await rawThumbnail(name);
           if (cfg.visualMode === 'infographic') await rawVisuals(name);
+          await rawThumbnail(name);
           await rawAudio(name);
           await rawVideoRender(name);
           try {
@@ -431,11 +433,12 @@ export default function Home() {
     setError(''); setBusy('auto'); setAutoStep('running');
     try {
       if (editMetadata !== debate!.metadata) await rawSaveMetadata();
-      await rawThumbnail();
       if (cfg.visualMode === 'infographic') {
         await rawVisuals();
+        await rawThumbnail();
         setAutoStep('awaiting-visuals');
       } else {
+        await rawThumbnail();
         await renderAfterReviews();
       }
     } catch (err) {
@@ -517,7 +520,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand">Debate Studio</div>
+        <div className="brand">KZR Video Studio</div>
         <button className="new-project" onClick={startNew} disabled={working}>＋ New project</button>
         <div className="sidebar-label">Recent projects</div>
         <div className="project-list">
@@ -538,7 +541,7 @@ export default function Home() {
       <div className="workspace">
       <div className="head-row">
         <div>
-          <h1>{debate ? debate.topic || debate.debateName : 'Create a debate video pack'}</h1>
+          <h1>{debate ? debate.topic || debate.debateName : 'Create a video pack'}</h1>
           <p className="sub">{debate ? debate.debateName : 'One topic becomes a landscape video and three vertical shorts.'}</p>
         </div>
         {debate && <button className="btn-secondary" onClick={startNew} disabled={working}>Start new</button>}
@@ -564,18 +567,31 @@ export default function Home() {
       {/* 1 — Topic */}
       <section className="panel">
         <h2 className="step-title">1 · Title and context</h2>
-        <label htmlFor="topic">Debate title/topic</label>
+        <label htmlFor="topic">Video title/topic</label>
         <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
                placeholder="e.g. AI replacing teachers" disabled={working || !!debate} />
         <label htmlFor="context">Context <span className="optional">(optional)</span></label>
         <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
-                  placeholder="Optional framing or a real event to anchor the debate…"
+                  placeholder="Optional angle, facts, events, or details to include…"
                   disabled={working || !!debate} />
         {!debate && (
           <>
+            <label htmlFor="content-format">Content format</label>
+            <select id="content-format" value={cfg.contentMode} disabled={working}
+                    onChange={e => setCfg(c => ({ ...c, contentMode: e.target.value as RunConfig['contentMode'] }))}>
+              <option value="narrated-explainer">Narrated explainer</option>
+              <option value="debate">Two-sided debate</option>
+            </select>
             <label htmlFor="visual-format">Visual format</label>
             <select id="visual-format" value={cfg.visualMode} disabled={working}
-                    onChange={e => setCfg(c => ({ ...c, visualMode: e.target.value as RunConfig['visualMode'] }))}>
+                    onChange={e => {
+                      const visualMode = e.target.value as RunConfig['visualMode'];
+                      setCfg(c => ({
+                        ...c,
+                        visualMode,
+                        contentMode: visualMode === 'infographic' ? 'narrated-explainer' : 'debate',
+                      }));
+                    }}>
               <option value="debate">Character debate</option>
               <option value="infographic">Infographic cards</option>
             </select>
@@ -679,6 +695,10 @@ export default function Home() {
             {options && (
               <div className="config-grid">
                 <div>
+                  <label>Content format</label>
+                  <input value={cfg.contentMode === 'narrated-explainer' ? 'Narrated explainer' : 'Two-sided debate'} disabled />
+                </div>
+                <div>
                   <label>Visual format</label>
                   <select value={cfg.visualMode} disabled={working}
                           onChange={e => setCfg(c => ({ ...c, visualMode: e.target.value as RunConfig['visualMode'] }))}>
@@ -712,9 +732,9 @@ export default function Home() {
                   <input type="number" step={0.05} min={0.25} max={4} value={cfg.ttsSpeed} disabled={working}
                          onChange={e => setCfg(c => ({ ...c, ttsSpeed: Number(e.target.value) }))} />
                 </div>
-                {(['HOST', 'A', 'B'] as const).map(sp => (
+                {(cfg.contentMode === 'narrated-explainer' ? ['HOST'] as const : ['HOST', 'A', 'B'] as const).map(sp => (
                   <div key={sp}>
-                    <label>{sp === 'HOST' ? 'Host' : `Speaker ${sp}`} voice</label>
+                    <label>{cfg.contentMode === 'narrated-explainer' ? 'Narrator' : sp === 'HOST' ? 'Host' : `Speaker ${sp}`} voice</label>
                     <div className="voice-field">
                       <select value={cfg.voices[sp]} disabled={working} onChange={e => setVoice(sp, e.target.value)}>
                         {options.voices.map(v => <option key={v} value={v}>{v}</option>)}
@@ -781,7 +801,7 @@ export default function Home() {
                   <p className="review-note">Add <code>PEXELS_API_KEY</code> to <code>.env</code>, then restart the app.</p>
                 ) : visualScenes.length === 0 ? (
                   <>
-                    <p className="review-note">Creates one topic-specific stock photo for every three dialogue lines.</p>
+                    <p className="review-note">Creates one topic-specific stock photo for every three script lines.</p>
                     <button onClick={generateVisuals} disabled={working || renderElsewhere}>
                       {job?.kind === 'visuals' ? 'Finding visuals…' : 'Generate visual scenes'}
                     </button>
@@ -840,7 +860,11 @@ export default function Home() {
               ) : (
                 <>
                   {debate.thumbnailExists && <img className="thumb" src={`/api/debate/${name}/thumbnail?t=${nonce}`} alt="thumbnail" />}
-                  <button className="btn-secondary" onClick={generateThumbnail} disabled={working}>
+                  {cfg.contentMode === 'narrated-explainer' && cfg.visualMode === 'infographic' && !visualsReady && (
+                    <p className="review-note">Generate visual scenes first so the thumbnail can use a topic-specific image.</p>
+                  )}
+                  <button className="btn-secondary" onClick={generateThumbnail}
+                          disabled={working || (cfg.contentMode === 'narrated-explainer' && cfg.visualMode === 'infographic' && !visualsReady)}>
                     {busy === 'thumbnail' ? 'Rendering…' : debate.thumbnailExists ? 'Regenerate thumbnail' : 'Generate thumbnail'}
                   </button>
                 </>

@@ -1,0 +1,37 @@
+You write publishing metadata for a single-narrator YouTube explainer and its three short-form video parts.
+
+TOPIC: {topic}
+
+ADDITIONAL CONTEXT (optional - may be blank):
+{context}
+
+NARRATION SCRIPT (raw HOST|text lines; HOST is only an internal narrator marker):
+{script}
+
+Produce one markdown document with EXACTLY these 7 sections in this order:
+
+## YouTube Title
+A single line, maximum 70 characters. Make it specific and compelling without dishonest clickbait. No quotes or ALL CAPS.
+
+## YouTube Description
+Three to five short paragraphs. Open with a one-sentence hook, explain what the viewer will learn, and end with a natural invitation to subscribe or comment. Never call the video a debate.
+
+## Hashtags
+A single line of 8-12 relevant, lowercase, space-separated hashtags. Each must start with # and contain only letters or digits.
+
+## Reel 1 — Hook Caption
+Line 1: Part 1 - <the exact YouTube Title above>
+Then write 1-2 sentences based on the opening and add 3-5 lowercase hashtags on the next line.
+
+## Reel 2 — Key Insight Caption
+Line 1: Part 2 - <the exact YouTube Title above>
+Then write 1-2 sentences based on a major development or insight and add 3-5 lowercase hashtags on the next line.
+
+## Reel 3 — Takeaway Caption
+Line 1: Part 3 - <the exact YouTube Title above>
+Then write 1-2 sentences based on the outcome or takeaway and add 3-5 lowercase hashtags on the next line.
+
+## Thumbnail Hook
+A single line of 3-6 words. Use a clear question, surprise, or contrast readable on a phone. No hashtags or quotes.
+
+Do not add any other headings, wrapper text, explanations, or code fences.

@@ -104,21 +104,20 @@ function audioDuration(file: string): number {
   return Number.parseFloat(result.stdout.trim());
 }
 
-/** Slow, eased zoom-out with a diagonal drift across an oversized source. */
+/** Alternate eased zoom-in/LTR and zoom-out/RTL motion for each new image. */
 function photoMotionFilter(portrait: boolean, lineIndex: number, elapsedSec: number): string {
   const offset = Math.max(0, Math.round(elapsedSec * config.fps));
   const easeFrames = config.fps * 18;
   const ease = `(0.5-0.5*cos(PI*min((on+${offset})/${easeFrames}\\,1)))`;
-  const zoom = `1.08-0.08*${ease}`;
-  const leftToRight = Math.floor(lineIndex / 3) % 2 === 0;
-  const xFactor = leftToRight ? `0.18+0.52*${ease}` : `0.82-0.52*${ease}`;
-  const yFactor = leftToRight ? `0.22+0.42*${ease}` : `0.70-0.40*${ease}`;
+  const zoomIn = Math.floor(lineIndex / 3) % 2 === 0;
+  const zoom = zoomIn ? `1+0.12*${ease}` : `1.12-0.12*${ease}`;
+  const xFactor = zoomIn ? `0.12+0.76*${ease}` : `0.88-0.76*${ease}`;
   const canvas = portrait ? '4320:7680' : '7680:4320';
   const output = portrait ? '1080x1920' : '1920x1080';
   return [
     `scale=${canvas}:force_original_aspect_ratio=increase`,
     `crop=${canvas}:x=(in_w-out_w)/2:y=(in_h-out_h)/2`,
-    `zoompan=z='${zoom}':x='(iw-iw/zoom)*(${xFactor})':y='(ih-ih/zoom)*(${yFactor})':d=99999:s=${output}:fps=${config.fps}`,
+    `zoompan=z='${zoom}':x='(iw-iw/zoom)*(${xFactor})':y='(ih-ih/zoom)/2':d=99999:s=${output}:fps=${config.fps}`,
     'setsar=1',
   ].join(',');
 }

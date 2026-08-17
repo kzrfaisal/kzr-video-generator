@@ -82,6 +82,27 @@ function concatWithFade(finalSequence: string[], outputFile: string): void {
     return merged;
   });
 
+  // A narrated explainer uses HOST for every line, so pass 1 produces exactly one
+  // group. There is nothing to crossfade; finalize that clip directly. Mapping
+  // "[0:a]" below only works for a filter output and caused these renders to fail.
+  if (groupClips.length === 1) {
+    const result = spawnSync('ffmpeg', [
+      '-y',
+      '-i', path.resolve(groupClips[0]),
+      '-vf', `fps=${config.fps},fade=t=in:st=0:d=${config.fadeInDuration}`,
+      '-map', '0:v',
+      '-map', '0:a',
+      '-r', String(config.fps),
+      '-c:v', 'libx264',
+      '-preset', config.videoPreset,
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      outputFile,
+    ], { stdio: 'inherit' });
+    if (result.status !== 0) throw new Error('ffmpeg single-group concat failed');
+    return;
+  }
+
   // Pass 2: xfade chain over the merged clips
   const D = config.transitionDuration;
   const durations = groupClips.map(ffprobeDuration);

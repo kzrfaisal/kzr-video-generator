@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { wrapText } from './utils';
 import { projectPath } from './paths';
+import { readContentMode } from './contentMode';
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'also', 'because', 'been', 'before', 'being', 'between',
@@ -32,7 +33,8 @@ function keyPhrases(text: string): string[] {
   return ranked.length ? ranked : ['key', 'point'];
 }
 
-function labelFor(speaker: string): string {
+function labelFor(name: string, speaker: string): string {
+  if (readContentMode(name) === 'narrated-explainer') return 'VISUAL EXPLAINER';
   if (speaker === 'A') return "ZACH'S ARGUMENT";
   if (speaker === 'B') return "DAVID'S ARGUMENT";
   return 'MODERATOR CONTEXT';
@@ -77,7 +79,7 @@ export function createInfographicOverlay(
     return file;
   };
 
-  const labelFile = makeText('label', labelFor(speaker));
+  const labelFile = makeText('label', labelFor(debateName, speaker));
   const topicFiles = topicLines.map((line, index) => makeText(`topic${index}`, line));
   const headlineFiles = headlineLines.map((line, index) => makeText(`headline${index}`, line));
   const font = path.resolve(fontFile);

@@ -1,6 +1,6 @@
 # kzr-video-generator
 
-TypeScript/Node.js CLI that generates debate videos from a text topic.
+TypeScript/Node.js app that generates narrated explainer or debate videos from a text topic.
 
 **Stack:** Node.js, TypeScript (tsx), OpenAI GPT-4o-mini (script), OpenAI TTS tts-1 (audio), ffmpeg (video)
 
@@ -25,7 +25,7 @@ Start the app on the laptop:
 npm run next:dev
 ```
 
-Open `http://localhost:3000`, enter a debate title/topic and context, then click **Create full video pack**. Choose either character-debate visuals or generated infographic cards. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. Finished files can be downloaded together as a ZIP. Publishing to YouTube and Instagram remains available as an optional final step; upload receipts make retries skip posts that already succeeded.
+Open `http://localhost:3000`, enter a title/topic and context, then click **Create full video pack**. Choose a narrated explainer or two-sided debate, plus character or infographic visuals. Selecting infographic visuals automatically defaults new projects to a single-narrator explainer. The app generates the script, metadata, thumbnail, audio, main video, and three portrait videos. Finished files can be downloaded together as a ZIP. Publishing to YouTube and Instagram remains available as an optional final step; upload receipts make retries skip posts that already succeeded.
 
 For topic-specific infographic photos, create a free API key at [Pexels API](https://www.pexels.com/api/), add it as `PEXELS_API_KEY` in `.env`, and restart the app. The app downloads and caches one photo per three dialogue lines, shows every photo for review, and saves photographer credits with the download pack. Without this key, character-debate videos still work normally.
 

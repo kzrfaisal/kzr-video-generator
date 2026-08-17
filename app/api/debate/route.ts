@@ -41,11 +41,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const topic = typeof body.topic === 'string' ? body.topic.trim() : '';
   const context = typeof body.context === 'string' ? body.context.trim() : '';
+  const contentMode = body.contentMode ?? 'debate';
   if (!topic) {
     return NextResponse.json({ error: 'Topic is required.' }, { status: 400 });
   }
+  if (!['debate', 'narrated-explainer'].includes(contentMode)) {
+    return NextResponse.json({ error: 'Invalid content format.' }, { status: 400 });
+  }
 
-  const args = ['script', topic];
+  const args = ['script', topic, `--content-mode=${contentMode}`];
   if (context) args.push(`--context=${context}`);
   const result = await runStage(args);
 
