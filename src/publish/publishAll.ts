@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { publishDir, publishMetadata, publishRecordPath, publishThumbnail } from '../paths';
 import { parseSocialMetadata } from './metadata';
+import { readProjectDocument } from '../infrastructure/storage/localProjectStore';
 import { uploadToYouTube } from './youtube';
 import { uploadInstagramReel } from './instagram';
 import { readVisualPlan } from '../visualScenes';
@@ -83,7 +84,13 @@ function pexelsCredits(debateName: string): string {
 }
 
 export async function publishAll(debateName: string, target: PublishTarget = 'all'): Promise<PublishRecord> {
-  const metadata = parseSocialMetadata(fs.readFileSync(publishMetadata(debateName), 'utf-8'));
+  const projectMetadata = readProjectDocument(debateName).metadata;
+  const metadata = projectMetadata ? {
+    youtubeTitle: projectMetadata.youtube.title,
+    youtubeDescription: projectMetadata.youtube.description,
+    hashtags: projectMetadata.youtube.hashtags.join(' '),
+    reelCaptions: projectMetadata.reels.map(reel => reel.caption),
+  } : parseSocialMetadata(fs.readFileSync(publishMetadata(debateName), 'utf-8'));
   const mainVideo = newestMainVideo(debateName);
   const reels = newestReels(debateName);
   const now = new Date().toISOString();

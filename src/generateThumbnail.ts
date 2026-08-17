@@ -3,9 +3,10 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { config } from '../config';
 import { ensureDir, wrapText } from './utils';
-import { projectPath, publishDir, publishMetadata, publishThumbnail } from './paths';
+import { publishDir, publishMetadata, publishThumbnail } from './paths';
 import { readContentMode } from './contentMode';
 import { readVisualPlan } from './visualScenes';
+import { readProjectDocument } from './infrastructure/storage/localProjectStore';
 
 const THUMB_W = 1280;
 const THUMB_H = 720;
@@ -17,7 +18,7 @@ const HOOK_MIN_FONT = 38;    // don't shrink below this — wrap instead
 
 function isInfographicProject(debateName: string): boolean {
   try {
-    const project = JSON.parse(fs.readFileSync(projectPath(debateName), 'utf-8'));
+    const project = readProjectDocument(debateName);
     return project.config?.visualMode === 'infographic';
   } catch {
     return false;
@@ -80,6 +81,11 @@ function generateExplainerThumbnail(debateName: string, hook: string, fontfile: 
 }
 
 function readHookFromMetadata(debateName: string): string {
+  try {
+    const hook = readProjectDocument(debateName).metadata?.thumbnailHook.trim();
+    if (hook) return hook.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 2).join('\n');
+  } catch { /* fall back to the legacy markdown export below */ }
+
   const mdPath = publishMetadata(debateName);
   if (!fs.existsSync(mdPath)) {
     throw new Error(`Metadata file not found: ${mdPath}. Thumbnail needs the '## Thumbnail Hook' section.`);

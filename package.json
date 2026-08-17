@@ -16,7 +16,8 @@
     "transitions": "tsx src/createTransitions.ts",
     "transition-audio": "tsx src/addTransitionAudio.ts",
     "extract-reel-scripts": "tsx src/extractReelScripts.ts",
-    "reels": "tsx src/makeReels.ts --style=style3"
+    "reels": "tsx src/makeReels.ts --style=style3",
+    "test:domain": "tsx --test src/domain/projects/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

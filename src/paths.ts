@@ -21,9 +21,8 @@ export function scriptPath(name: string): string {
 }
 
 /**
- * Per-debate project record (topic + context, and later config choices). This small
- * sidecar is the app's source of truth for a debate beyond its raw files — it becomes a
- * database row when this grows into a SaaS.
+ * Versioned project document. It owns title, context, structured scenes, metadata, and
+ * config, and can later become a database row when this grows into a SaaS.
  */
 export function projectPath(name: string): string {
   return `output/debates/${name}.project.json`;

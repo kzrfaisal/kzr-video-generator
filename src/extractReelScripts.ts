@@ -2,6 +2,7 @@ import fs from 'fs';
 import { ensureDir, parseDebateFile, DebateLine } from './utils';
 import { outroText } from './reelOutro';
 import { readContentMode, type ContentMode } from './contentMode';
+import { projectPath } from './paths';
 
 type Block = { speaker: string; texts: string[]; origIndices: number[] };
 
@@ -69,8 +70,8 @@ function blocksToScript(blocks: Block[]): string {
  */
 export function extract(debateName: string): ExtractedPart[] {
   const inputFile = `output/debates/${debateName}.txt`;
-  if (!fs.existsSync(inputFile)) {
-    throw new Error(`Debate file not found: ${inputFile}`);
+  if (!fs.existsSync(projectPath(debateName)) && !fs.existsSync(inputFile)) {
+    throw new Error(`Project not found: ${debateName}`);
   }
 
   const lines = parseDebateFile(inputFile);

@@ -1,7 +1,8 @@
 import fs from 'fs';
 import { projectPath } from './paths';
+import type { ContentMode } from './domain/projects/types';
 
-export type ContentMode = 'debate' | 'narrated-explainer';
+export type { ContentMode } from './domain/projects/types';
 
 export function normalizeContentMode(value: unknown): ContentMode {
   return value === 'narrated-explainer' ? 'narrated-explainer' : 'debate';
@@ -12,7 +13,7 @@ export function readContentMode(name: string): ContentMode {
   const base = (name.split('/').pop() ?? name).replace(/_part\d+$/, '');
   try {
     const project = JSON.parse(fs.readFileSync(projectPath(base), 'utf-8'));
-    return normalizeContentMode(project.config?.contentMode);
+    return normalizeContentMode(project.contentMode ?? project.config?.contentMode);
   } catch {
     return 'debate';
   }
