@@ -5,6 +5,7 @@ import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } f
 import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 import { metadataToMarkdown } from '@/src/domain/projects/metadata';
+import { readPipelineState } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -52,5 +53,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     reelScripts,                          // [] until extracted
     reelsCount: findReelVideos(name).length,
     publishing,
+    pipeline: readPipelineState(name),
   });
 }

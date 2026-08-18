@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
-import { jobs, hasActiveJob, startJob, type Job } from '@/src/infrastructure/jobs/jobManager';
+import { createJob, hasActiveJob, startJob } from '@/src/infrastructure/jobs/jobManager';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { reelsPartsPath } from '@/src/shared/filesystem/paths';
 
@@ -20,13 +19,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
     return NextResponse.json({ error: 'Another render is already running.' }, { status: 409 });
   }
 
-  const id = randomUUID();
-  const job: Job = {
-    id, debateName: name, kind: 'reels',
-    status: 'running', stage: 'reels', logs: [], reelPaths: [], createdAt: Date.now(),
-  };
-  jobs.set(id, job);
+  const job = createJob({ debateName: name, kind: 'reels' });
   // Reels render in style3 (portrait 9:16), loaded in the child's own config.
   startJob(job, ['reels-build', name, '--style=style3']);
-  return NextResponse.json({ jobId: id });
+  return NextResponse.json({ jobId: job.id, attempt: job.attempt });
 }

@@ -74,7 +74,7 @@ interface Debate {
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
 type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
-interface JobView { id: string; kind: JobKind; stage: string; status: string; logs?: string[]; error?: string; }
+interface JobView { id: string; kind: JobKind; stage: string; status: string; attempt?: number; logs?: string[]; error?: string; }
 
 interface ProjectSummary {
   debateName: string;
@@ -239,20 +239,20 @@ export default function Home() {
   // Start a long job and resolve when it finishes (rejecting on error). Updates progress
   // and reloads the debate on completion. Used by both manual buttons and the auto chain.
   async function startJobAndWait(startUrl: string, kind: JobKind, name: string, requestBody?: unknown) {
-    const { jobId } = await jsonOrThrow(await fetch(startUrl, {
+    const { jobId, attempt } = await jsonOrThrow(await fetch(startUrl, {
       method: 'POST',
       ...(requestBody === undefined ? {} : {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       }),
     }));
-    setJob({ id: jobId, kind, stage: kind, status: 'running' });
+    setJob({ id: jobId, kind, stage: kind, status: 'running', attempt });
     await new Promise<void>((resolve, reject) => {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
           const j = await jsonOrThrow(await fetch(`/api/job/${jobId}`));
-          setJob({ id: jobId, kind, stage: j.stage, status: j.status, logs: j.logs, error: j.error });
+          setJob({ id: jobId, kind, stage: j.stage, status: j.status, attempt: j.attempt, logs: j.logs, error: j.error });
           if (j.status !== 'running') {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
@@ -558,7 +558,7 @@ export default function Home() {
         <div className="job-progress" role="status">
           <span className="job-spinner" aria-hidden="true" />
           <div>
-            <strong>{job.stage === 'publishing' ? 'Publishing' : `Working on ${job.stage}`}…</strong>
+            <strong>{job.stage === 'publishing' ? 'Publishing' : `Working on ${job.stage}`}…{job.attempt && job.attempt > 1 ? ` (attempt ${job.attempt})` : ''}</strong>
             {job.logs?.length ? <p>{job.logs[job.logs.length - 1]}</p> : <p>This can take a few minutes. You can keep this tab open.</p>}
           </div>
         </div>

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
-import { jobs, hasActiveJob, startJob, type Job } from '@/src/infrastructure/jobs/jobManager';
+import { createJob, hasActiveJob, startJob } from '@/src/infrastructure/jobs/jobManager';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { findMainVideo, findReelVideos, hasAudio } from '@/src/features/rendering/videoFiles';
 
@@ -21,14 +20,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
     return NextResponse.json({ error: 'Another render is already running.' }, { status: 409 });
   }
 
-  const id = randomUUID();
-  const job: Job = {
-    id, debateName: name, kind: 'video',
-    status: 'running', stage: 'video', logs: [], reelPaths: [], createdAt: Date.now(),
-  };
-  jobs.set(id, job);
+  const job = createJob({ debateName: name, kind: 'video' });
   startJob(job, ['video', name]);
-  return NextResponse.json({ jobId: id });
+  return NextResponse.json({ jobId: job.id, attempt: job.attempt });
 }
 
 // GET /api/debate/<name>/video[?reel=<n>] — stream a finished video file (with range support).

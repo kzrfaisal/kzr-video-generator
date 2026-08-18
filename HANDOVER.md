@@ -62,7 +62,7 @@ and audio remains per-line OpenAI TTS. See `docs/architecture.md` for dependency
   - `/api/job/[id]` (poll) · `/api/job/active` (is any render running)
   - `/api/options` (dropdowns from config.ts) · `/api/voice-sample/[voice]` (cached preview)
 - `src/infrastructure/process/runStage.ts` — spawn quick stage, await, parse markers
-- `src/infrastructure/jobs/jobManager.ts` — in-memory job registry on `globalThis`,
+- `src/infrastructure/jobs/jobManager.ts` — in-memory active registry plus atomic durable job records,
   `activeJob` (self-heals a dead render via `process.kill(pid,0)` so it can't wedge the
   single slot). **One render at a time.**
 - `src/features/rendering/videoFiles.ts` locates finished output; `src/shared/voices.ts`
@@ -82,6 +82,8 @@ and audio remains per-line OpenAI TTS. See `docs/architecture.md` for dependency
 - `output/publish/<name>/` — **deliverables**: `.metadata.md`, `.thumbnail.jpg`, main
   `<name>_<ts>.mp4`, reels `<name>_partK_<ts>.mp4`
 - `output/cost_log.jsonl` (global), `output/voice-samples/<voice>.mp3` (cache)
+- `output/pipelines/<name>.json` (durable stage status/attempts), `output/jobs/<id>.json`
+  (individual background-job attempts)
 - Debate names are `debate<N>`, auto-numbered.
 
 ## 8. Gotchas (these will bite you)
@@ -89,7 +91,8 @@ and audio remains per-line OpenAI TTS. See `docs/architecture.md` for dependency
   or clone must supply them.
 - **One render at a time** globally (in-memory registry). Starting a second returns 409;
   UI shows a "render in progress elsewhere" banner (`/api/job/active`).
-- **Jobs are in-memory** — lost on server restart (fine for local; a SaaS needs a DB/queue).
+- Active process handles are in-memory, while job status and pipeline attempts persist to
+  disk. An interrupted attempt becomes failed after restart and can be retried.
 - Reels reuse the source scenes and audio; preserve their scene order when editing.
 - **ffmpeg fps bug (fixed, don't reintroduce):** xfade fails → 0-byte video if clip
   durations average to a non-integer fps. Fix in `buildVideo.ts`:

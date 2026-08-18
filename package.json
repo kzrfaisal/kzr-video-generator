@@ -19,7 +19,8 @@
     "reels": "tsx src/features/reels/makeReels.ts --style=style3",
     "test:domain": "tsx --test src/domain/projects/*.test.ts",
     "test:openai": "tsx --test src/services/openai/*.test.ts",
-    "test:unit": "tsx --test src/domain/projects/*.test.ts src/services/openai/*.test.ts"
+    "test:pipeline": "tsx --test src/domain/pipeline/*.test.ts",
+    "test:unit": "tsx --test src/domain/projects/*.test.ts src/domain/pipeline/*.test.ts src/services/openai/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

@@ -100,6 +100,9 @@ planning use the Responses API with Zod Structured Outputs; see
 The source code is separated into domain, feature, infrastructure, service, and shared
 layers. See [the architecture guide](docs/architecture.md) before adding a new module.
 
+Generation attempts and per-project stage status are persisted locally, so a failed stage
+can be retried without rerunning completed stages. See [pipeline reliability](docs/pipeline-reliability.md).
+
 | Field | Default | Notes |
 |---|---|---|
 | `scriptModel` | `'gpt-4o-mini'` | OpenAI model used for structured script, metadata, and visual-plan generation. |

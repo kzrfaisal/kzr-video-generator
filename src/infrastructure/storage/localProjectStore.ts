@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import { projectPath, scriptPath } from '@/src/shared/filesystem/paths';
 import { normalizeContentMode } from '@/src/features/projects/contentMode';
 import { reconcileScenes, scriptToLegacyText } from '@/src/domain/projects/script';
@@ -9,6 +8,7 @@ import {
   type ProjectDocument,
   type ScriptScene,
 } from '@/src/domain/projects/types';
+import { readJsonFile, writeJsonAtomic } from './atomicJsonFile';
 
 type LegacyProjectRecord = {
   topic?: unknown;
@@ -20,7 +20,7 @@ type LegacyProjectRecord = {
 };
 
 function readJson(file: string): unknown {
-  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  return readJsonFile<unknown>(file);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -132,10 +132,7 @@ export function saveProjectDocument(project: ProjectDocument, writeTextExport = 
     updatedAt: new Date().toISOString(),
   };
   const file = projectPath(next.id);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', 'utf-8');
-  fs.renameSync(temporary, file);
+  writeJsonAtomic(file, next);
   if (writeTextExport) fs.writeFileSync(scriptPath(next.id), scriptToLegacyText(next.scenes), 'utf-8');
   return next;
 }
