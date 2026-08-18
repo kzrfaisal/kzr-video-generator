@@ -93,11 +93,14 @@ The merge is **shallow** — nested maps (`images`, `voices`, `subtitleStyle`) a
 
 ### Script generation
 
+Prompts are versioned in `src/services/openai/prompts.ts`. Script, metadata, and visual
+planning use the Responses API with Zod Structured Outputs; see
+[the generation-layer notes](docs/openai-generation.md).
+
 | Field | Default | Notes |
 |---|---|---|
-| `scriptModel` | `'gpt-4o-mini'` | OpenAI model used to generate the debate (and the metadata file). |
-| `videoLengthTarget` | `'5-7 minutes'` | Substituted into the prompt template as the `{videoLength}` placeholder. |
-| `promptFile` | `'source/debate_prompt.txt'` | Path to the prompt template. `style3` swaps this to `source/reels_prompt.txt`. |
+| `scriptModel` | `'gpt-4o-mini'` | OpenAI model used for structured script, metadata, and visual-plan generation. |
+| `videoLengthTarget` | `'5-7 minutes'` | Passed as a user preference to the structured script generator. |
 | `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions). Hashtags are generated without web search; reel captions are prefixed with `Part N - <YouTube title>`. Costs one additional `scriptModel` call. Set to `false` to skip. |
 | `generateThumbnail` | `true` | When `true`, the script stage also renders a 1280×720 `debateN.thumbnail.jpg` using `thumbnailBackground` + the `## Thumbnail Hook` line from the metadata file. Requires `generateMetadata: true`. No extra OpenAI call. |
 | `thumbnailBackground` | `'assets/images/image_H.png'` | Background image overlaid with the `DEBATE` label + center hook text by ffmpeg `drawtext`. Any 16:9 image works; non-16:9 is letterboxed with black bars. |
@@ -140,7 +143,7 @@ Presets live in the `VIDEO_STYLES` map in [`config.ts`](config.ts). Switch the a
 |---|---|---|
 | `style1` | Default 16:9 debate | (none — pure defaults) |
 | `style2` | Same 16:9, abstract host background + big-center subtitle for HOST only | `images.HOST`, `subtitleStyle.HOST` |
-| `style3` | 9:16 Reels/Shorts, 30–60s, portrait images, big-center subtitles | `isReelStyle`, `videoLengthTarget`, `promptFile`, `transitionDuration`, `subtitleStyle`, `images` |
+| `style3` | 9:16 Reels/Shorts, 30–60s, portrait images, big-center subtitles | `isReelStyle`, `videoLengthTarget`, `transitionDuration`, `subtitleStyle`, `images` |
 
 ### Picking the style per run (no config edit)
 

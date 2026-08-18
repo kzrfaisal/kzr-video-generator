@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import OpenAI from 'openai';
 import { config } from '../config';
 import { ensureDir, type DebateLine, withRetry } from './utils';
 import {
@@ -13,8 +12,10 @@ import {
 import { readContentMode } from './contentMode';
 import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
 import { scenesToDialogue } from './domain/projects/script';
+import { GeneratedVisualPlanSchema } from './services/openai/schemas';
+import { generateStructured } from './services/openai/structuredOutput';
+import { VISUAL_PROMPT_VERSION, visualDeveloperPrompt, visualUserPrompt } from './services/openai/prompts';
 
-const client = new OpenAI();
 const LINES_PER_SCENE = 3;
 
 export interface VisualSource {
@@ -94,32 +95,28 @@ async function createPlanCopy(
   context: string,
   groups: SceneGroup[],
   narrated: boolean,
-): Promise<Array<{ headline: string; searchQuery: string }>> {
+): Promise<{ scenes: Array<{ headline: string; searchQuery: string }>; responseId: string }> {
   const compact = groups.map(group => ({ id: group.id, narration: group.text }));
-  const prompt = `Create stock-photo directions for a ${narrated ? 'single-narrator documentary explainer' : 'debate infographic'} video.
-
-Topic: ${topic}
-Context: ${context || '(none)'}
-Scenes: ${JSON.stringify(compact)}
-
-Return JSON only in this shape: {"scenes":[{"id":"scene-01","headline":"2-5 words","searchQuery":"3-7 concrete visual words"}]}.
-Return exactly one entry per supplied scene and keep the same IDs and order.
-Search queries must describe a photograph Pexels is likely to contain. Prefer concrete people, places, objects, locations, time periods, and actions that accurately support the narration. Avoid abstract words, opinions, logos, text in images, and the words debate or infographic. Make adjacent scenes visually distinct.`;
-
-  const response = await withRetry(() => client.chat.completions.create({
+  const generated = await generateStructured({
     model: config.scriptModel,
-    response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content: prompt }],
-  }), 'visual scene plan');
-  const parsed = JSON.parse(response.choices[0].message.content ?? '{}');
-  const scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
-  if (scenes.length !== groups.length) throw new Error('Visual planner returned the wrong number of scenes.');
-  return groups.map((group, index) => ({
-    headline: typeof scenes[index]?.headline === 'string' ? scenes[index].headline.trim().slice(0, 60) : `Scene ${index + 1}`,
-    searchQuery: typeof scenes[index]?.searchQuery === 'string'
-      ? scenes[index].searchQuery.trim().slice(0, 100)
-      : fallbackQuery(topic, group.text),
-  }));
+    schema: GeneratedVisualPlanSchema,
+    schemaName: 'visual_plan',
+    developerPrompt: visualDeveloperPrompt(narrated),
+    userPrompt: visualUserPrompt({ title: topic, context, scenes: compact }),
+    label: 'visual scene plan',
+  });
+  if (generated.data.scenes.length !== groups.length) {
+    throw new Error('Visual planner returned the wrong number of scenes.');
+  }
+  const scenes = groups.map((group, index) => {
+    const planned = generated.data.scenes[index];
+    if (planned.id !== group.id) throw new Error(`Visual planner changed scene ID ${group.id}.`);
+    return {
+      headline: planned.headline.trim(),
+      searchQuery: planned.searchQuery.trim(),
+    };
+  });
+  return { scenes, responseId: generated.responseId };
 }
 
 function pexelsKey(): string {
@@ -246,12 +243,24 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
   const lines = scenesToDialogue(project.scenes);
   const groups = groupLines(lines, project.scenes.map(scene => scene.id));
   let copy: Array<{ headline: string; searchQuery: string }>;
+  let visualResponseId: string | null = null;
   try {
-    copy = await createPlanCopy(project.title || debateName, project.context, groups, narrated);
+    const generatedCopy = await createPlanCopy(project.title || debateName, project.context, groups, narrated);
+    copy = generatedCopy.scenes;
+    visualResponseId = generatedCopy.responseId;
   } catch (error) {
     console.warn(`Visual copy planning failed; using local fallback: ${error instanceof Error ? error.message : error}`);
     copy = groups.map(group => ({ headline: 'Key point', searchQuery: fallbackQuery(project.title, group.text) }));
   }
+  const generation = typeof project.config.generation === 'object' && project.config.generation !== null
+    ? project.config.generation as Record<string, unknown>
+    : {};
+  project.config.generation = {
+    ...generation,
+    visualPromptVersion: VISUAL_PROMPT_VERSION,
+    ...(visualResponseId ? { visualResponseId } : {}),
+  };
+  saveProjectDocument(project);
 
   const plan: VisualPlan = {
     version: 1,

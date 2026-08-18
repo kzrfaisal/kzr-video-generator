@@ -1,13 +1,14 @@
 import 'dotenv/config';
 import fs from 'fs';
-import OpenAI from 'openai';
-import { ensureDir, parseContextFlag, withRetry } from './utils';
+import { ensureDir, parseContextFlag } from './utils';
 import { config } from '../config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
 import type { ContentMode } from './contentMode';
 import { createProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
-
-const client = new OpenAI();
+import { GeneratedScriptSchema } from './services/openai/schemas';
+import { generateStructured } from './services/openai/structuredOutput';
+import { SCRIPT_PROMPT_VERSION, scriptDeveloperPrompt, scriptUserPrompt } from './services/openai/prompts';
+import type { ScriptScene, SpeakerRole } from './domain/projects/types';
 
 const SCRIPT_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
 const SCRIPT_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
@@ -38,32 +39,45 @@ export async function run(topic: string, context: string = '', contentMode: Cont
   metadata: MetadataResult;
 }> {
   ensureDir('output/debates');
-
-  const promptFile = contentMode === 'narrated-explainer'
-    ? 'source/explainer_prompt.txt'
-    : config.promptFile;
-  const promptTemplate = fs.readFileSync(promptFile, 'utf-8');
-  const prompt = promptTemplate
-    .replace('{topic}', topic)
-    .replace('{context}', context)
-    .replace('{videoLength}', config.videoLengthTarget);
-
-  const response = await withRetry(() => client.chat.completions.create({
+  const generated = await generateStructured({
     model: config.scriptModel,
-    messages: [{ role: 'user', content: prompt }],
-  }), 'script');
+    schema: GeneratedScriptSchema,
+    schemaName: 'video_script',
+    developerPrompt: scriptDeveloperPrompt(contentMode, config.isReelStyle),
+    userPrompt: scriptUserPrompt({
+      title: topic,
+      context,
+      contentMode,
+      videoLengthTarget: config.videoLengthTarget,
+    }),
+    label: 'script generation',
+  });
 
-  const content = response.choices[0].message.content ?? '';
-
-  const lines = content.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-  for (const line of lines) {
-    const valid = contentMode === 'narrated-explainer'
-      ? /^HOST\|.+$/.test(line)
-      : /^(HOST|A|B)\|.+$/.test(line);
-    if (!valid) {
-      throw new Error(`LLM returned an invalid line: "${line}"`);
+  if (contentMode === 'narrated-explainer' && generated.data.scenes.some(scene => scene.speaker !== 'HOST')) {
+    throw new Error('Structured explainer output contained a non-HOST speaker.');
+  }
+  if (contentMode === 'debate') {
+    const speakers = new Set(generated.data.scenes.map(scene => scene.speaker));
+    if (!speakers.has('HOST') || !speakers.has('A') || !speakers.has('B')) {
+      throw new Error('Structured debate output must contain HOST, A, and B scenes.');
     }
   }
+
+  const scenes: ScriptScene[] = generated.data.scenes.map((scene, index) => ({
+    id: `scene-${String(index + 1).padStart(3, '0')}`,
+    speaker: scene.speaker as SpeakerRole,
+    narration: scene.narration.trim(),
+    headline: scene.headline.trim(),
+    visualQuery: scene.visualQuery.trim(),
+    visualType: contentMode === 'narrated-explainer' ? 'stock-photo' : scene.visualType,
+    visualAssetPath: null,
+    durationHintSeconds: scene.durationHintSeconds,
+    overlays: scene.headline.trim()
+      ? [{ id: `scene-${String(index + 1).padStart(3, '0')}-headline`, type: 'headline', text: scene.headline.trim() }]
+      : [],
+    status: 'draft',
+  }));
+  const content = scenes.map(scene => `${scene.speaker}|${scene.narration}`).join('\n') + '\n';
 
   const existing = fs.readdirSync('output/debates')
     .filter((f: string) => f.startsWith('debate') && f.endsWith('.txt'))
@@ -78,19 +92,27 @@ export async function run(topic: string, context: string = '', contentMode: Cont
     context,
     contentMode,
     script: content,
+    config: {
+      contentMode,
+      generation: {
+        scriptPromptVersion: SCRIPT_PROMPT_VERSION,
+        scriptResponseId: generated.responseId,
+      },
+    },
   });
+  project.scenes = scenes;
   saveProjectDocument(project);
   console.log(`Project saved to output/debates/${debateName}.project.json`);
   console.log(`Text export saved to output/debates/${debateName}.txt`);
 
   const metadata = await generateMetadataIfEnabled(topic, context, content, debateName, contentMode);
 
-  const usage = response.usage!;
+  const usage = generated.usage;
   const scriptCost =
-    usage.prompt_tokens * SCRIPT_INPUT_COST_PER_TOKEN +
-    usage.completion_tokens * SCRIPT_OUTPUT_COST_PER_TOKEN;
+    usage.inputTokens * SCRIPT_INPUT_COST_PER_TOKEN +
+    usage.outputTokens * SCRIPT_OUTPUT_COST_PER_TOKEN;
 
-  return { debateName, promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, scriptCost, metadata };
+  return { debateName, promptTokens: usage.inputTokens, completionTokens: usage.outputTokens, scriptCost, metadata };
 }
 
 if (require.main === module) {

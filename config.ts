@@ -136,12 +136,10 @@ export interface Config {
   /** OpenAI voice assigned to each speaker role */
   voices: Record<string, string>;
 
-  /** OpenAI model used to generate the debate script */
+  /** OpenAI model used for structured script, metadata, and visual-plan generation */
   scriptModel: string;
   /** Target video length passed to the script prompt (e.g. '5-7 minutes') */
   videoLengthTarget: string;
-  /** Path to the script prompt template file */
-  promptFile: string;
   /** When true, the script stage also produces a debateN.metadata.md file with YouTube title/description/hashtags and the 3 reel captions. When false, only the script .txt is written and no extra OpenAI call is made. */
   generateMetadata: boolean;
   /** When true, the script stage also renders a 1280×720 debateN.thumbnail.jpg using config.thumbnailBackground + the `## Thumbnail Hook` line from the metadata file. Requires generateMetadata: true. */
@@ -206,7 +204,6 @@ const baseConfig: Config = {
 
   scriptModel: 'gpt-4o-mini',
   videoLengthTarget: '5-7 minutes',
-  promptFile: 'source/debate_prompt.txt',
   generateMetadata: true,
   generateThumbnail: true,
   thumbnailBackground: 'assets/images/image_H.png',
@@ -265,7 +262,6 @@ export const VIDEO_STYLES: Record<string, Partial<Config>> = {
   style3: {
     isReelStyle: true,
     videoLengthTarget: '30-60 seconds',
-    promptFile: 'source/reels_prompt.txt',
     transitionDuration: 0.4,
     subtitleStyle: {
       HOST: 'reels-top',

@@ -61,7 +61,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   }
 
   const project = readProjectDocument(name);
-  project.config = c;
+  const generation = project.config.generation;
+  project.config = { ...project.config, ...c };
+  if (generation !== undefined) project.config.generation = generation;
   if (c.contentMode) project.contentMode = c.contentMode;
   saveProjectDocument(project);
   return NextResponse.json({ ok: true });
