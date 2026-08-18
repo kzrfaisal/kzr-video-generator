@@ -1,19 +1,17 @@
 import 'dotenv/config';
 import fs from 'fs';
-import OpenAI from 'openai';
 import { config } from '../config';
-import { ensureDir, withRetry } from './utils';
+import { ensureDir } from './utils';
 import { publishDir, publishMetadata } from './paths';
 import type { ContentMode } from './contentMode';
-import { parseMetadataMarkdown } from './domain/projects/metadata';
+import { metadataToMarkdown } from './domain/projects/metadata';
 import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
-
-const client = new OpenAI();
+import { GeneratedMetadataSchema } from './services/openai/schemas';
+import { generateStructured } from './services/openai/structuredOutput';
+import { METADATA_PROMPT_VERSION, metadataDeveloperPrompt, metadataUserPrompt } from './services/openai/prompts';
 
 const METADATA_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
 const METADATA_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
-
-const METADATA_PROMPT_FILE = 'source/metadata_prompt.txt';
 
 export interface MetadataResult {
   promptTokens: number;
@@ -28,42 +26,51 @@ export async function generateMetadata(
   debateName: string,
   contentMode: ContentMode = 'debate',
 ): Promise<MetadataResult> {
-  const promptFile = contentMode === 'narrated-explainer'
-    ? 'source/explainer_metadata_prompt.txt'
-    : METADATA_PROMPT_FILE;
-  const promptTemplate = fs.readFileSync(promptFile, 'utf-8');
-  const prompt = promptTemplate
-    .replace('{topic}', topic)
-    .replace('{context}', context)
-    .replace('{script}', scriptContent);
-
-  const response = await withRetry(() => client.chat.completions.create({
+  const generated = await generateStructured({
     model: config.scriptModel,
-    messages: [{ role: 'user', content: prompt }],
-  }), 'metadata');
-
-  const content = response.choices[0].message.content ?? '';
-  // Safety net: force every #hashtag in the generated markdown to lowercase.
-  const lowered = content.replace(/#[A-Za-z0-9_]+/g, m => m.toLowerCase());
-  const structuredMetadata = parseMetadataMarkdown(lowered);
+    schema: GeneratedMetadataSchema,
+    schemaName: 'publishing_metadata',
+    developerPrompt: metadataDeveloperPrompt(contentMode),
+    userPrompt: metadataUserPrompt({
+      title: topic,
+      context,
+      contentMode,
+      script: scriptContent,
+    }),
+    label: 'metadata generation',
+  });
+  const parts = [...generated.data.reels].sort((a, b) => a.part - b.part);
+  if (parts.some((reel, index) => reel.part !== index + 1)) {
+    throw new Error('Structured metadata must contain unique reel parts 1, 2, and 3.');
+  }
+  const structuredMetadata = { ...generated.data, reels: parts };
+  const markdown = metadataToMarkdown(structuredMetadata);
 
   const project = readProjectDocument(debateName);
   project.metadata = structuredMetadata;
+  const generation = typeof project.config.generation === 'object' && project.config.generation !== null
+    ? project.config.generation as Record<string, unknown>
+    : {};
+  project.config.generation = {
+    ...generation,
+    metadataPromptVersion: METADATA_PROMPT_VERSION,
+    metadataResponseId: generated.responseId,
+  };
   saveProjectDocument(project);
 
   ensureDir(publishDir(debateName));
   const outFile = publishMetadata(debateName);
-  fs.writeFileSync(outFile, lowered, 'utf-8');
+  fs.writeFileSync(outFile, markdown, 'utf-8');
   console.log(`Metadata saved to ${outFile}`);
 
-  const usage = response.usage!;
+  const usage = generated.usage;
   const cost =
-    usage.prompt_tokens * METADATA_INPUT_COST_PER_TOKEN +
-    usage.completion_tokens * METADATA_OUTPUT_COST_PER_TOKEN;
+    usage.inputTokens * METADATA_INPUT_COST_PER_TOKEN +
+    usage.outputTokens * METADATA_OUTPUT_COST_PER_TOKEN;
 
   return {
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
+    promptTokens: usage.inputTokens,
+    completionTokens: usage.outputTokens,
     cost,
   };
 }
