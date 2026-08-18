@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { publishDir, publishThumbnail } from '@/src/paths';
+import { publishDir, publishThumbnail } from '@/src/shared/filesystem/paths';
 
 /** Whether the thumbnail JPG has been rendered. */
 export function hasThumbnail(name: string): boolean {

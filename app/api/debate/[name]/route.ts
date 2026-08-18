@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { isValidDebateName } from '@/lib/stage';
-import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/paths';
-import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/lib/videos';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/shared/filesystem/paths';
+import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 import { metadataToMarkdown } from '@/src/domain/projects/metadata';
 

@@ -1,14 +1,14 @@
 import 'dotenv/config';
 import fs from 'fs';
-import { ensureDir, parseContextFlag } from './utils';
-import { config } from '../config';
+import { ensureDir, parseContextFlag } from '@/src/shared/utils';
+import { config } from '@/config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
-import type { ContentMode } from './contentMode';
-import { createProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
-import { GeneratedScriptSchema } from './services/openai/schemas';
-import { generateStructured } from './services/openai/structuredOutput';
-import { SCRIPT_PROMPT_VERSION, scriptDeveloperPrompt, scriptUserPrompt } from './services/openai/prompts';
-import type { ScriptScene, SpeakerRole } from './domain/projects/types';
+import type { ContentMode } from '@/src/features/projects/contentMode';
+import { createProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { GeneratedScriptSchema } from '@/src/services/openai/schemas';
+import { generateStructured } from '@/src/services/openai/structuredOutput';
+import { SCRIPT_PROMPT_VERSION, scriptDeveloperPrompt, scriptUserPrompt } from '@/src/services/openai/prompts';
+import type { ScriptScene, SpeakerRole } from '@/src/domain/projects/types';
 
 const SCRIPT_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
 const SCRIPT_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
@@ -118,7 +118,7 @@ export async function run(topic: string, context: string = '', contentMode: Cont
 if (require.main === module) {
   const topic = process.argv[2];
   if (!topic) {
-    console.error('Usage: tsx src/generateScript.ts <topic> [--context="<framing>"]');
+    console.error('Usage: npm run script -- <topic> [--context="<framing>"]');
     process.exit(1);
   }
   const context = parseContextFlag() ?? '';

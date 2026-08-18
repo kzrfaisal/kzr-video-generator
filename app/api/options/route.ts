@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { STYLES, VIDEO_STYLES } from '@/config';
-import { VOICES } from '@/lib/voices';
+import { VOICES } from '@/src/shared/voices';
 
 export const runtime = 'nodejs';
 

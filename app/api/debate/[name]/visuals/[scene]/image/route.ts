@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { isValidDebateName } from '@/lib/stage';
-import { readVisualPlan } from '@/src/visualScenes';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { readVisualPlan } from '@/src/features/visuals/visualScenes';
 
 export const runtime = 'nodejs';
 

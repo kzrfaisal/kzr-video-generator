@@ -1,14 +1,14 @@
 import 'dotenv/config';
 import fs from 'fs';
-import { config } from '../config';
-import { ensureDir } from './utils';
-import { publishDir, publishMetadata } from './paths';
-import type { ContentMode } from './contentMode';
-import { metadataToMarkdown } from './domain/projects/metadata';
-import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
-import { GeneratedMetadataSchema } from './services/openai/schemas';
-import { generateStructured } from './services/openai/structuredOutput';
-import { METADATA_PROMPT_VERSION, metadataDeveloperPrompt, metadataUserPrompt } from './services/openai/prompts';
+import { config } from '@/config';
+import { ensureDir } from '@/src/shared/utils';
+import { publishDir, publishMetadata } from '@/src/shared/filesystem/paths';
+import type { ContentMode } from '@/src/features/projects/contentMode';
+import { metadataToMarkdown } from '@/src/domain/projects/metadata';
+import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { GeneratedMetadataSchema } from '@/src/services/openai/schemas';
+import { generateStructured } from '@/src/services/openai/structuredOutput';
+import { METADATA_PROMPT_VERSION, metadataDeveloperPrompt, metadataUserPrompt } from '@/src/services/openai/prompts';
 
 const METADATA_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
 const METADATA_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;

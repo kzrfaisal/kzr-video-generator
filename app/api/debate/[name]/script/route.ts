@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { isValidDebateName } from '@/lib/stage';
-import { projectPath } from '@/src/paths';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { projectPath } from '@/src/shared/filesystem/paths';
 import { updateProjectScriptFromText } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';

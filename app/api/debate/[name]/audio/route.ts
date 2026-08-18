@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { jobs, hasActiveJob, startJob, type Job } from '@/lib/jobs';
-import { isValidDebateName } from '@/lib/stage';
-import { scriptPath } from '@/src/paths';
+import { jobs, hasActiveJob, startJob, type Job } from '@/src/infrastructure/jobs/jobManager';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { scriptPath } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
 

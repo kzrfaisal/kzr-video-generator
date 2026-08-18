@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
-import { isValidVoice, SAMPLE_TEXT } from '@/lib/voices';
+import { isValidVoice, SAMPLE_TEXT } from '@/src/shared/voices';
 
 export const runtime = 'nodejs';
 

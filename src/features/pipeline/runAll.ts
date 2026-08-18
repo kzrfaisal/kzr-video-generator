@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
-import { run as runMain } from '../main';
-import { parseContextFlag } from './utils';
+import { run as runMain } from '@/main';
+import { parseContextFlag } from '@/src/shared/utils';
 
 async function main(): Promise<void> {
   const topic = process.argv[2];
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   console.log(`\nYouTube pipeline done. Starting reels for ${debateName}...\n`);
   const result = spawnSync(
     'npx',
-    ['tsx', 'src/makeReels.ts', debateName, '--style=style3'],
+    ['tsx', 'src/features/reels/makeReels.ts', debateName, '--style=style3'],
     { stdio: 'inherit' },
   );
   if (result.status !== 0) {

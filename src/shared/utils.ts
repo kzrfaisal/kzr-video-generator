@@ -1,9 +1,9 @@
 import fs from 'fs';
 import readline from 'readline';
 import path from 'path';
-import { scenesToDialogue } from './domain/projects/script';
-import { readProjectDocument } from './infrastructure/storage/localProjectStore';
-import { projectPath } from './paths';
+import { scenesToDialogue } from '@/src/domain/projects/script';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { projectPath } from '@/src/shared/filesystem/paths';
 
 export interface DebateLine { speaker: string; text: string; }
 

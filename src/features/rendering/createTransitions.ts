@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { config } from '../config';
+import { config } from '@/config';
 
 function imageFor(code: string): string {
   const key = code === 'H' ? 'HOST' : code;
@@ -59,7 +59,7 @@ export function run(from?: string, to?: string): void {
 if (require.main === module) {
   const [from, to] = process.argv.slice(2);
   if ((from && !to) || (!from && to)) {
-    console.error('Usage: tsx src/createTransitions.ts [FROM TO]');
+    console.error('Usage: npm run transitions -- [FROM TO]');
     console.error('  FROM and TO are speaker codes: H, A, B');
     console.error('  Omit both to regenerate all 6 transitions');
     process.exit(1);

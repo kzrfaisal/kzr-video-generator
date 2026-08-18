@@ -7,7 +7,6 @@ YouTube metadata. It began as a CLI and now has a **Next.js web UI** wrapped aro
 same pipeline. Single-user, runs locally. OpenAI for text+TTS; **ffmpeg** for all video.
 
 - Repo: `/Users/kzrfaisal/kzr/projects/kzr-video-generator`
-- Branch: `feature/add-nextjs-app` (NOT merged to `main`)
 - Requires: Node, `ffmpeg` on PATH, `.env` with `OPENAI_API_KEY`
 
 ## 2. Run it
@@ -18,10 +17,9 @@ same pipeline. Single-user, runs locally. OpenAI for text+TTS; **ffmpeg** for al
 
 ## 3. Architecture — the key idea
 The web app does **NOT import** the heavy pipeline. It **spawns it as a child process**:
-`spawn('npx', ['tsx', 'src/runPipeline.ts', <subcommand>, …])`. Data crosses the boundary
+`spawn('npx', ['tsx', 'src/features/pipeline/runPipeline.ts', <subcommand>, …])`. Data crosses the boundary
 as **CLI args in**, **`@@MARKER@@` stdout lines + files on disk out**. Only *pure* modules
-are imported directly by Next: `src/paths.ts` and `config.ts` (plus `openai` in the
-voice-sample route, the one exception). This is why `src/` was never rewritten.
+and local adapters are imported directly by Next.
 
 Why spawn (not import): the pipeline has a module-level `config` singleton set per-process,
 uses blocking `spawnSync` for ffmpeg, and was already a working CLI — separate processes
@@ -32,23 +30,23 @@ Flow per stage: **browser → API route → spawn `runPipeline <stage>` → read
 disk → UI updates.** Quick stages are awaited; long stages run as background jobs the
 browser polls.
 
-## 4. The pipeline (`src/`, the CLI — unchanged core)
-`src/runPipeline.ts` is the web entry point; subcommands:
+## 4. The pipeline
+`src/features/pipeline/runPipeline.ts` is the web entry point; subcommands:
 `script | metadata | thumbnail | audio | video | extract-reels | reels-build`.
 Underlying modules:
-- `generateScript.ts` — OpenAI → debate script; lines are strictly `HOST|…`, `A|…`, `B|…`
-- `generateMetadata.ts` — OpenAI (+ `gpt-4o-mini-search-preview` for hashtags) → `.metadata.md`
-- `generateThumbnail.ts` — ffmpeg drawtext → 1280×720 `.thumbnail.jpg` (uses the
-  `## Thumbnail Hook` line from metadata; supports 1–2 lines)
-- `generateAudio.ts` — OpenAI TTS, per-speaker voices → per-line `.mp3` (has retry/backoff)
-- `createVideoSegments.ts` — ffmpeg: one clip per line (image + burned subtitles)
-- `buildVideo.ts` — ffmpeg concat + xfade crossfade → final `.mp4`
-- `makeReels.ts` (`extract` + `buildReelsFromParts`) + `extractReelScripts.ts` +
-  `reelOutro.ts` — split debate into 3 reels (style3, portrait), **reuse the main audio**
-- `paths.ts` — all output path helpers (single source of truth; imported by web too)
-- `utils.ts` — `withRetry`, `waitForEnter` (auto-skips when non-TTY), `parseDebateFile`, etc.
+- `features/scripts/` — structured explainer/debate script and metadata generation
+- `features/visuals/` — visual planning, Pexels images, infographic overlays, and thumbnail
+- `features/rendering/` — TTS, ffmpeg segments/transitions, and final video assembly
+- `features/reels/` — short-form extraction and rendering
+- `features/publishing/` — YouTube and Instagram delivery
+- `infrastructure/` — local storage, background jobs, and child-process execution
+- `shared/` — filesystem paths and cross-feature utilities
 
-## 5. Web layer (`app/` + `lib/`)
+The thumbnail renderer creates a 1280×720 `.thumbnail.jpg` (uses the
+  `## Thumbnail Hook` line from metadata; supports 1–2 lines)
+and audio remains per-line OpenAI TTS. See `docs/architecture.md` for dependency rules.
+
+## 5. Web layer (`app/`)
 - `app/page.tsx` — the **entire client UI** (`'use client'`): stepped flow (Topic → Script
   → Metadata → YouTube video[thumbnail/audio/video sub-steps + config panel] → Reels),
   "Generate all" with a **non-stop** toggle, job polling, recovers active debate from
@@ -63,12 +61,12 @@ Underlying modules:
   - `[name]/reels-scripts` GET+PUT · `[name]/reels` POST(job)
   - `/api/job/[id]` (poll) · `/api/job/active` (is any render running)
   - `/api/options` (dropdowns from config.ts) · `/api/voice-sample/[voice]` (cached preview)
-- `lib/stage.ts` — `runStage` (spawn quick stage, await, parse markers) + `isValidDebateName`
-- `lib/jobs.ts` — in-memory job registry on `globalThis`; `startJob` (long stages),
+- `src/infrastructure/process/runStage.ts` — spawn quick stage, await, parse markers
+- `src/infrastructure/jobs/jobManager.ts` — in-memory job registry on `globalThis`,
   `activeJob` (self-heals a dead render via `process.kill(pid,0)` so it can't wedge the
   single slot). **One render at a time.**
-- `lib/videos.ts` — locate finished files; `hasThumbnail`/`hasAudio`. `lib/voices.ts` — the
-  9 valid tts-1 voices + sample text.
+- `src/features/rendering/videoFiles.ts` locates finished output; `src/shared/voices.ts`
+  owns the valid TTS voices and sample text.
 
 ## 6. Config (`config.ts`)
 - `baseConfig` (defaults) + `VIDEO_STYLES` (`style1` default landscape, `style2` host-bg,
@@ -78,7 +76,7 @@ Underlying modules:
   and reels stages read a per-debate config from the project sidecar and call this.
 
 ## 7. Disk layout
-- `output/debates/<name>.txt` (script), `<name>.project.json` (topic/context/config sidecar)
+- `output/debates/<name>.project.json` is authoritative; `<name>.txt` is a compatibility export
 - `output/debates/reels/<name>_partK.txt` (reel scripts), `<name>.parts.json` (reel sidecar)
 - `output/audios/<name>/…mp3`, `output/audios/reels/<name>_partK/…mp3`
 - `output/publish/<name>/` — **deliverables**: `.metadata.md`, `.thumbnail.jpg`, main
@@ -92,14 +90,13 @@ Underlying modules:
 - **One render at a time** globally (in-memory registry). Starting a second returns 409;
   UI shows a "render in progress elsewhere" banner (`/api/job/active`).
 - **Jobs are in-memory** — lost on server restart (fine for local; a SaaS needs a DB/queue).
-- **Reels require the HOST→A→HOST→B structure**; `extractReelScripts` throws otherwise
-  (surfaced as a non-fatal error — you still keep the main video).
+- Reels reuse the source scenes and audio; preserve their scene order when editing.
 - **ffmpeg fps bug (fixed, don't reintroduce):** xfade fails → 0-byte video if clip
   durations average to a non-integer fps. Fix in `buildVideo.ts`:
   `[i:v]fps=${config.fps},settb=AVTB`. This is why reels were coming out 0-byte.
 - **Editing a reel part's text is fine; don't add/remove lines** — reel audio is reused by
   original line index (`.parts.json`).
-- OpenAI occasionally 500s → `withRetry` wraps the text calls and audio has its own retry.
+- OpenAI occasionally 500s → `withRetry` wraps structured generation and audio has its own retry.
 
 ## 9. Current state (done)
 Full working web app: stepped generation, per-step edit + regenerate, config panel

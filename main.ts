@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import fs from 'fs';
-import { run as generateScript } from './src/generateScript';
-import { run as generateAudio } from './src/generateAudio';
-import { run as makeVideo } from './src/makeVideo';
-import { generateThumbnail } from './src/generateThumbnail';
-import { waitForEnter, parseContextFlag } from './src/utils';
+import { run as generateScript } from '@/src/features/scripts/generateScript';
+import { run as generateAudio } from '@/src/features/rendering/generateAudio';
+import { run as makeVideo } from '@/src/features/rendering/makeVideo';
+import { generateThumbnail } from '@/src/features/visuals/generateThumbnail';
+import { waitForEnter, parseContextFlag } from '@/src/shared/utils';
 import { config } from './config';
 
 const USD_TO_INR = 84;
@@ -47,7 +47,7 @@ export async function run(topic: string, context: string = ''): Promise<{ debate
   const { characters, audioCost } = await generateAudio(debateName);
   const audioTime = Date.now() - audioStart;
 
-  // 5. Video — segments per line, optional prerendered transitions, final concat (see src/makeVideo.ts)
+  // 5. Video — segments per line, optional prerendered transitions, final concat.
   const videoStart = Date.now();
   makeVideo(debateName);
   const videoTime = Date.now() - videoStart;

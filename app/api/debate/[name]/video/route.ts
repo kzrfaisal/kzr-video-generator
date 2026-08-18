@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { jobs, hasActiveJob, startJob, type Job } from '@/lib/jobs';
-import { isValidDebateName } from '@/lib/stage';
-import { findMainVideo, findReelVideos, hasAudio } from '@/lib/videos';
+import { jobs, hasActiveJob, startJob, type Job } from '@/src/infrastructure/jobs/jobManager';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { findMainVideo, findReelVideos, hasAudio } from '@/src/features/rendering/videoFiles';
 
 export const runtime = 'nodejs';
 

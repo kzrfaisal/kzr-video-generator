@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { z } from 'zod';
-import { withRetry } from '../../utils';
+import { withRetry } from '@/src/shared/utils';
 
 const client = new OpenAI();
 
@@ -52,4 +52,3 @@ export async function generateStructured<T>(input: {
     responseId: response.id,
   };
 }
-

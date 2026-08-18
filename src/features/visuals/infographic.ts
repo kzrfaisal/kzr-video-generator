@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { wrapText } from './utils';
-import { readContentMode } from './contentMode';
-import { readProjectDocument } from './infrastructure/storage/localProjectStore';
+import { wrapText } from '@/src/shared/utils';
+import { readContentMode } from '@/src/features/projects/contentMode';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 const STOP_WORDS = new Set([
   'about', 'after', 'again', 'also', 'because', 'been', 'before', 'being', 'between',

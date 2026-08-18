@@ -97,6 +97,9 @@ Prompts are versioned in `src/services/openai/prompts.ts`. Script, metadata, and
 planning use the Responses API with Zod Structured Outputs; see
 [the generation-layer notes](docs/openai-generation.md).
 
+The source code is separated into domain, feature, infrastructure, service, and shared
+layers. See [the architecture guide](docs/architecture.md) before adding a new module.
+
 | Field | Default | Notes |
 |---|---|---|
 | `scriptModel` | `'gpt-4o-mini'` | OpenAI model used for structured script, metadata, and visual-plan generation. |
@@ -153,7 +156,7 @@ Any CLI entry point reads `--style=<name>` (or env `npm_config_style`) at startu
 npm start "AI replacing teachers" --style=style2     # full pipeline, 16:9 host-bg variant
 npm run video debate12 --style=style1                # rebuild video for an existing debate at 16:9
 npm run reels debate10                               # reels script bakes in --style=style3, so no flag needed
-tsx src/makeVideo.ts debate12 --style=style3         # works on direct invocation too
+npm run video -- debate12 --style=style3             # direct feature command
 ```
 
 Both forms work because npm exposes `--style=X` as the env var `npm_config_style`, which `config.ts` also reads. If you prefer the standard npm passthrough, `npm run video debate12 -- --style=style1` works as well.
@@ -228,20 +231,20 @@ Then set `subtitleStyle: 'my-style'`.
 # 1. Generate debate script only (saves to output/debates/debateN.txt)
 npm run script "AI replacing teachers"
 # or
-tsx src/generateScript.ts "AI replacing teachers"
+npm run script -- "AI replacing teachers"
 
 # 2. Generate audio for a debate (reads output/debates/debate1.txt)
 npm run audio debate1
 # or
-tsx src/generateAudio.ts debate1
+npm run audio -- debate1
 
 # 3. Generate video segments + build final video
 npm run video debate1
 # or
-tsx src/makeVideo.ts debate1
+npm run video -- debate1
 
 # Run video stages separately:
-tsx src/createVideoSegments.ts debate1
+tsx src/features/rendering/createVideoSegments.ts debate1
 tsx src/buildVideo.ts debate1
 ```
 
@@ -259,7 +262,7 @@ After generating a long-form debate, you can split its script into three reel-si
 #    reuses debate10's audio → builds 3 reel videos.
 npm run reels debate10
 # or
-tsx src/makeReels.ts debate10
+npm run reels -- debate10
 ```
 
 Under the hood the command:
@@ -295,20 +298,20 @@ Run these when you replace speaker images (`assets/images/image_H.png`, `image_A
 # Regenerate all 6 transition videos
 npm run transitions
 # or
-tsx src/createTransitions.ts
+npm run transitions
 
 # Regenerate one specific transition (FROM and TO are H, A, or B)
-tsx src/createTransitions.ts B H
-tsx src/createTransitions.ts H A
+npm run transitions -- B H
+npm run transitions -- H A
 
 # Add audio to all transition videos
 # Requires: assets/audios/transition_audio.wav
 npm run transition-audio
 # or
-tsx src/addTransitionAudio.ts
+npm run transition-audio
 
 # Add audio to one specific transition
-tsx src/addTransitionAudio.ts transition_B_to_H
+npm run transition-audio -- transition_B_to_H
 ```
 
 > Note: `addTransitionAudio` writes to a `.tmp.mp4` first, then renames over the original — so ffmpeg never reads and writes the same file simultaneously.
@@ -419,7 +422,7 @@ npm run transitions
 Rebuilds all six speaker-to-speaker transition video clips at the active style's dimensions. Run after swapping images or changing `transitionEffect`/`transitionDuration`.
 
 ```bash
-tsx src/createTransitions.ts H A
+npm run transitions -- H A
 ```
 Rebuilds a single transition (`H → A` here). Speaker codes: `H`, `A`, `B`.
 
@@ -429,6 +432,6 @@ npm run transition-audio
 Mixes `assets/audios/transition_audio.wav` into all transition clips in place (via a `.tmp.mp4` swap).
 
 ```bash
-tsx src/addTransitionAudio.ts transition_B_to_H
+npm run transition-audio -- transition_B_to_H
 ```
 Adds the transition audio to a single named clip.

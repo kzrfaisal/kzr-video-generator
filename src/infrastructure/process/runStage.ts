@@ -1,5 +1,5 @@
 /**
- * Runs a short `src/runPipeline.ts` subcommand (script, metadata) to completion and
+ * Runs a short pipeline subcommand (script, metadata) to completion and
  * returns its result. Used for the quick stages that finish in seconds, so the API can
  * just await them — no background-job tracking needed (that's reserved for the long
  * audio/video stages in a later slice).
@@ -15,7 +15,7 @@ export interface StageResult {
 
 export function runStage(args: string[]): Promise<StageResult> {
   return new Promise(resolve => {
-    const child = spawn('npx', ['tsx', 'src/runPipeline.ts', ...args], { cwd: process.cwd() });
+    const child = spawn('npx', ['tsx', 'src/features/pipeline/runPipeline.ts', ...args], { cwd: process.cwd() });
     let output = '';
     const markers: Record<string, string> = {};
 

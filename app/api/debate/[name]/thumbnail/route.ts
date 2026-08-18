@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { runStage, isValidDebateName } from '@/lib/stage';
-import { publishMetadata, publishThumbnail } from '@/src/paths';
+import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { publishMetadata, publishThumbnail } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
 

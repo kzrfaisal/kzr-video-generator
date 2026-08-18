@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { config } from '../config';
-import { ensureDir, wrapText } from './utils';
-import { publishDir, publishMetadata, publishThumbnail } from './paths';
-import { readContentMode } from './contentMode';
+import { config } from '@/config';
+import { ensureDir, wrapText } from '@/src/shared/utils';
+import { publishDir, publishMetadata, publishThumbnail } from '@/src/shared/filesystem/paths';
+import { readContentMode } from '@/src/features/projects/contentMode';
 import { readVisualPlan } from './visualScenes';
-import { readProjectDocument } from './infrastructure/storage/localProjectStore';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 const THUMB_W = 1280;
 const THUMB_H = 720;
@@ -202,7 +202,7 @@ export function generateThumbnail(debateName: string): void {
 if (require.main === module) {
   const debateName = process.argv[2];
   if (!debateName) {
-    console.error('Usage: tsx src/generateThumbnail.ts <debateName>   e.g. tsx src/generateThumbnail.ts debate17');
+    console.error('Usage: npm run thumbnail -- <debateName>');
     process.exit(1);
   }
   try {

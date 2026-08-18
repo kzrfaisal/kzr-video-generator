@@ -1,14 +1,14 @@
 /**
  * Background jobs for the LONG pipeline stages (video, reels) that take minutes. The UI
  * starts a job, then polls GET /api/job/<id> for its stage/status. Quick stages (script,
- * metadata, extract) don't use this — they're awaited directly (see lib/stage.ts).
+ * metadata, extract) don't use this — they're awaited directly by the process runner.
  *
  * Single-user, local, one job at a time. Becomes a real queue in the SaaS build.
  */
 import fs from 'fs';
 import path from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import { jobRecordPath } from '@/src/paths';
+import { jobRecordPath } from '@/src/shared/filesystem/paths';
 
 export type JobStatus = 'running' | 'done' | 'error';
 export type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
@@ -112,7 +112,7 @@ function ingest(job: Job, chunk: string) {
 
 /** Spawn a pipeline subcommand as a job and fold its output into `job`. */
 export function startJob(job: Job, args: string[]) {
-  const child = spawn('npx', ['tsx', 'src/runPipeline.ts', ...args], { cwd: process.cwd() });
+  const child = spawn('npx', ['tsx', 'src/features/pipeline/runPipeline.ts', ...args], { cwd: process.cwd() });
   job.child = child;
   persistJob(job);
 

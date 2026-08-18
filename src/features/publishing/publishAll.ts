@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { publishDir, publishMetadata, publishRecordPath, publishThumbnail } from '../paths';
+import { publishDir, publishMetadata, publishRecordPath, publishThumbnail } from '@/src/shared/filesystem/paths';
 import { parseSocialMetadata } from './metadata';
-import { readProjectDocument } from '../infrastructure/storage/localProjectStore';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import { uploadToYouTube } from './youtube';
 import { uploadInstagramReel } from './instagram';
-import { readVisualPlan } from '../visualScenes';
+import { readVisualPlan } from '@/src/features/visuals/visualScenes';
 
 interface YouTubeReceipt {
   videoId: string;

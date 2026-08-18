@@ -3,9 +3,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { isValidDebateName } from '@/lib/stage';
-import { findMainVideo, findReelVideos } from '@/lib/videos';
-import { publishMetadata, publishThumbnail, visualCreditsPath } from '@/src/paths';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { findMainVideo, findReelVideos } from '@/src/features/rendering/videoFiles';
+import { publishMetadata, publishThumbnail, visualCreditsPath } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
 

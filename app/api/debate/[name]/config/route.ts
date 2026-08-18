@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { isValidDebateName } from '@/lib/stage';
-import { projectPath } from '@/src/paths';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { projectPath } from '@/src/shared/filesystem/paths';
 import { STYLES, VIDEO_STYLES } from '@/config';
-import { isValidVoice } from '@/lib/voices';
+import { isValidVoice } from '@/src/shared/voices';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';

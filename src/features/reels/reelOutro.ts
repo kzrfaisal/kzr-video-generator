@@ -2,9 +2,9 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
-import { ensureDir } from './utils';
-import { config } from '../config';
-import type { ContentMode } from './contentMode';
+import { ensureDir } from '@/src/shared/utils';
+import { config } from '@/config';
+import type { ContentMode } from '@/src/features/projects/contentMode';
 
 const client = new OpenAI();
 
