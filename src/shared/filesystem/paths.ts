@@ -66,6 +66,11 @@ export function jobRecordPath(id: string): string {
   return `output/jobs/${id}.json`;
 }
 
+/** Durable per-project pipeline progress, independent of an individual job attempt. */
+export function pipelineStatePath(name: string): string {
+  return `output/pipelines/${parentName(name)}.json`;
+}
+
 /** Cached scene plan and downloaded source images for infographic projects. */
 export function visualsDir(name: string): string {
   return `output/visuals/${parentName(name)}`;

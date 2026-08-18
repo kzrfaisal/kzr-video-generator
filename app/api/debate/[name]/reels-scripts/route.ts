@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { reelPartScriptPath } from '@/src/shared/filesystem/paths';
+import { invalidateProjectStages, markStageCompleted } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -39,5 +40,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
     return NextResponse.json({ error: 'Script cannot be empty.' }, { status: 400 });
   }
   fs.writeFileSync(p, script, 'utf-8');
+  markStageCompleted(name, 'reel-scripts');
+  invalidateProjectStages(name, ['reels', 'publishing'], 'A reel script changed.');
   return NextResponse.json({ ok: true });
 }

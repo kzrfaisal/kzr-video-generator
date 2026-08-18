@@ -5,7 +5,7 @@ evolve independently.
 
 ```text
 src/
-  domain/            Provider-independent project data and rules
+  domain/            Provider-independent project and pipeline data/rules
   features/
     pipeline/        Workflow orchestration and CLI pipeline entry points
     projects/        Project-level behavior
@@ -15,9 +15,9 @@ src/
     scripts/         Script and metadata generation
     visuals/         Visual planning, thumbnails, and infographic overlays
   infrastructure/
-    jobs/            Local background-job implementation
+    jobs/            Durable local background-job implementation
     process/         Child-process stage runner
-    storage/         Local project persistence
+    storage/         Atomic local project and pipeline persistence
   services/
     openai/          OpenAI schemas, prompts, and structured-output adapter
   shared/            Cross-feature utilities and filesystem paths

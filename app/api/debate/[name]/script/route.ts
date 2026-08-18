@@ -3,6 +3,7 @@ import fs from 'fs';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { projectPath } from '@/src/shared/filesystem/paths';
 import { updateProjectScriptFromText } from '@/src/infrastructure/storage/localProjectStore';
+import { invalidateProjectStages, markStageCompleted } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -24,6 +25,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
 
   try {
     const project = updateProjectScriptFromText(name, script);
+    markStageCompleted(name, 'script');
+    invalidateProjectStages(
+      name,
+      ['metadata', 'visuals', 'thumbnail', 'audio', 'video', 'reel-scripts', 'reels', 'publishing'],
+      'Script changed.',
+    );
     return NextResponse.json({ ok: true, scenes: project.scenes });
   } catch (error) {
     return NextResponse.json(

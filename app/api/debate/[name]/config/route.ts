@@ -5,6 +5,8 @@ import { projectPath } from '@/src/shared/filesystem/paths';
 import { STYLES, VIDEO_STYLES } from '@/config';
 import { isValidVoice } from '@/src/shared/voices';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import type { PipelineStage } from '@/src/domain/pipeline/types';
+import { invalidateProjectStages } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -61,10 +63,29 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   }
 
   const project = readProjectDocument(name);
+  const changed = (key: string) => JSON.stringify(project.config[key]) !== JSON.stringify(c[key]);
+  const invalidated = new Set<PipelineStage>();
+  if (c.contentMode !== undefined && changed('contentMode')) {
+    ['script', 'metadata', 'visuals', 'thumbnail', 'audio', 'video', 'reel-scripts', 'reels', 'publishing']
+      .forEach(stage => invalidated.add(stage as PipelineStage));
+  }
+  if (c.visualMode !== undefined && changed('visualMode')) {
+    ['visuals', 'thumbnail', 'video', 'reels', 'publishing']
+      .forEach(stage => invalidated.add(stage as PipelineStage));
+  }
+  if (['voices', 'ttsModel', 'ttsSpeed'].some(key => c[key] !== undefined && changed(key))) {
+    ['audio', 'video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
+  }
+  if (['subtitleStyle', 'videoStyle', 'customSubtitle'].some(key => c[key] !== undefined && changed(key))) {
+    ['video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
+  }
   const generation = project.config.generation;
   project.config = { ...project.config, ...c };
   if (generation !== undefined) project.config.generation = generation;
   if (c.contentMode) project.contentMode = c.contentMode;
   saveProjectDocument(project);
+  if (invalidated.size > 0) {
+    invalidateProjectStages(name, [...invalidated], 'Rendering configuration changed.');
+  }
   return NextResponse.json({ ok: true });
 }

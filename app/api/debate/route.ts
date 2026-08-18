@@ -5,6 +5,7 @@ import { runStage } from '@/src/infrastructure/process/runStage';
 import { projectPath } from '@/src/shared/filesystem/paths';
 import { findMainVideo, findReelVideos, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
+import { markStageCompleted, markStageRunning } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -64,5 +65,7 @@ export async function POST(req: Request) {
 
   const script = readProjectScriptText(debateName);
   const project = readProjectDocument(debateName);
+  markStageRunning(debateName, 'script');
+  markStageCompleted(debateName, 'script');
   return NextResponse.json({ debateName, topic, context, script, scenes: project.scenes });
 }

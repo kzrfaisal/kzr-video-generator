@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
-import { jobs, hasActiveJob, startJob, type Job } from '@/src/infrastructure/jobs/jobManager';
+import { createJob, hasActiveJob, startJob, type JobKind } from '@/src/infrastructure/jobs/jobManager';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { findMainVideo, findReelVideos } from '@/src/features/rendering/videoFiles';
 import { publishMetadata } from '@/src/shared/filesystem/paths';
@@ -26,13 +25,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ name: s
     return NextResponse.json({ error: 'Another background job is already running.' }, { status: 409 });
   }
 
-  const id = randomUUID();
-  const kind = target === 'all' ? 'publish' : `publish-${target}` as Job['kind'];
-  const job: Job = {
-    id, debateName: name, kind, status: 'running', stage: `publishing-${target}`,
-    logs: [], reelPaths: [], createdAt: Date.now(),
-  };
-  jobs.set(id, job);
+  const kind = (target === 'all' ? 'publish' : `publish-${target}`) as JobKind;
+  const job = createJob({ debateName: name, kind, stage: `publishing-${target}` });
   startJob(job, ['publish', name, `--target=${target}`]);
-  return NextResponse.json({ jobId: id });
+  return NextResponse.json({ jobId: job.id, attempt: job.attempt });
 }

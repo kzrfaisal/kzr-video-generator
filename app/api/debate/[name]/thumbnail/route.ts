@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { publishMetadata, publishThumbnail } from '@/src/shared/filesystem/paths';
+import { markStageCompleted, markStageFailed, markStageRunning } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -16,13 +17,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
     return NextResponse.json({ error: 'Generate metadata first (the thumbnail uses its hook).' }, { status: 409 });
   }
 
+  markStageRunning(name, 'thumbnail');
   const result = await runStage(['thumbnail', name]);
   if (!result.ok || !fs.existsSync(publishThumbnail(name))) {
+    markStageFailed(name, 'thumbnail', result.output.slice(-600) || 'Thumbnail generation failed.');
     return NextResponse.json(
       { error: 'Thumbnail generation failed.', detail: result.output.slice(-600) },
       { status: 500 },
     );
   }
+  markStageCompleted(name, 'thumbnail');
   return NextResponse.json({ ok: true });
 }
 

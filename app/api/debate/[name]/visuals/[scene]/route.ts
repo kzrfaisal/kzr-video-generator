@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { regenerateVisualScene } from '@/src/features/visuals/visualScenes';
+import {
+  invalidateProjectStages,
+  markStageCompleted,
+  markStageFailed,
+  markStageRunning,
+} from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -11,9 +17,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ name: s
   }
   const body = await req.json().catch(() => ({}));
   const query = typeof body.query === 'string' ? body.query : undefined;
+  markStageRunning(name, 'visuals');
   try {
-    return NextResponse.json({ scene: await regenerateVisualScene(name, scene, query) });
+    const visual = await regenerateVisualScene(name, scene, query);
+    markStageCompleted(name, 'visuals');
+    invalidateProjectStages(name, ['video', 'reels', 'publishing'], 'A visual scene changed.');
+    return NextResponse.json({ scene: visual });
   } catch (error) {
+    markStageFailed(name, 'visuals', error instanceof Error ? error.message : 'Could not regenerate scene.');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Could not regenerate scene.' },
       { status: 500 },
