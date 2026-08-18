@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { ensureDir, formatTimestamp, cleanTmp } from './utils';
-import { config } from '../config';
-import { publishDir } from './paths';
+import { ensureDir, formatTimestamp, cleanTmp } from '@/src/shared/utils';
+import { config } from '@/config';
+import { publishDir } from '@/src/shared/filesystem/paths';
 
 const TRANSITIONS: Record<string, string> = {
   'HOST,A': 'assets/videos/transition_H_to_A.mp4',

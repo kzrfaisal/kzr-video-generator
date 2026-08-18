@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { parseMetadataMarkdown } from './metadata';
 import { reconcileScenes, scriptToLegacyText } from './script';
-import { migrateProjectDocument, readProjectDocument } from '../../infrastructure/storage/localProjectStore';
+import { migrateProjectDocument, readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 test('creates structured explainer scenes and a legacy export', () => {
   const scenes = reconcileScenes('HOST|Opening idea\nHOST|Supporting detail\n', 'narrated-explainer');
@@ -84,4 +84,3 @@ test('loads a legacy project and explicitly migrates it to the versioned schema'
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 });
-

@@ -2,7 +2,7 @@ import { run as createVideoSegments } from './createVideoSegments';
 import { run as buildVideo } from './buildVideo';
 import { run as createTransitions } from './createTransitions';
 import { run as addTransitionAudio } from './addTransitionAudio';
-import { config } from '../config';
+import { config } from '@/config';
 
 export function run(debateName: string): void {
   if (config.createTransitionVideos && config.includeTransitionVideos) {
@@ -23,7 +23,7 @@ export function run(debateName: string): void {
 if (require.main === module) {
   const debateName = process.argv[2];
   if (!debateName) {
-    console.error('Usage: tsx src/makeVideo.ts <debate_name>');
+    console.error('Usage: npm run video -- <debate_name>');
     process.exit(1);
   }
   try {

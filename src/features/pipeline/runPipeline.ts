@@ -2,29 +2,29 @@
  * Non-interactive, per-stage pipeline for the web UI. Each subcommand is one step the UI
  * drives with its own button; the app parses the `@@…@@` markers off stdout.
  *
- *   tsx src/runPipeline.ts script "<topic>" [--context=…]   generate script (+ project record)
- *   tsx src/runPipeline.ts metadata <debateName>            generate metadata
- *   tsx src/runPipeline.ts video <debateName>               thumbnail → audio → main video
- *   tsx src/runPipeline.ts extract-reels <debateName>       split into 3 editable reel scripts
- *   tsx src/runPipeline.ts reels-build <debateName>         build the 3 reel videos (needs --style=style3)
+ *   tsx src/features/pipeline/runPipeline.ts script "<topic>" [--context=…]
+ *   tsx src/features/pipeline/runPipeline.ts metadata <debateName>
+ *   tsx src/features/pipeline/runPipeline.ts video <debateName>
+ *   tsx src/features/pipeline/runPipeline.ts extract-reels <debateName>
+ *   tsx src/features/pipeline/runPipeline.ts reels-build <debateName>
  */
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { run as generateScript } from './generateScript';
-import { generateMetadata } from './generateMetadata';
-import { run as generateAudio } from './generateAudio';
-import { run as makeVideo } from './makeVideo';
-import { generateThumbnail } from './generateThumbnail';
-import { extract } from './extractReelScripts';
-import { buildReelsFromParts } from './makeReels';
-import { parseContextFlag } from './utils';
-import { config, configureRun } from '../config';
-import { publishDir, publishThumbnail, reelsPartsPath } from './paths';
-import { publishAll, type PublishTarget } from './publish/publishAll';
-import { generateVisualScenes } from './visualScenes';
-import { normalizeContentMode, type ContentMode } from './contentMode';
-import { readProjectDocument, readProjectScriptText } from './infrastructure/storage/localProjectStore';
+import { run as generateScript } from '@/src/features/scripts/generateScript';
+import { generateMetadata } from '@/src/features/scripts/generateMetadata';
+import { run as generateAudio } from '@/src/features/rendering/generateAudio';
+import { run as makeVideo } from '@/src/features/rendering/makeVideo';
+import { generateThumbnail } from '@/src/features/visuals/generateThumbnail';
+import { extract } from '@/src/features/reels/extractReelScripts';
+import { buildReelsFromParts } from '@/src/features/reels/makeReels';
+import { parseContextFlag } from '@/src/shared/utils';
+import { config, configureRun } from '@/config';
+import { publishDir, publishThumbnail, reelsPartsPath } from '@/src/shared/filesystem/paths';
+import { publishAll, type PublishTarget } from '@/src/features/publishing/publishAll';
+import { generateVisualScenes } from '@/src/features/visuals/visualScenes';
+import { normalizeContentMode, type ContentMode } from '@/src/features/projects/contentMode';
+import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 
 export type Stage = 'script' | 'thumbnail' | 'visuals' | 'audio' | 'video' | 'reels' | 'publishing' | 'done';
 
@@ -136,7 +136,7 @@ if (require.main === module) {
 
   if (sub === 'script') {
     const topic = process.argv[3];
-    if (!topic) fail('Usage: tsx src/runPipeline.ts script "<topic>" [--context=…]');
+    if (!topic) fail('Usage: tsx src/features/pipeline/runPipeline.ts script "<topic>" [--context=…]');
     const context = parseContextFlag() ?? '';
     const contentModeArg = process.argv.find(arg => arg.startsWith('--content-mode='))?.split('=')[1];
     const contentMode = normalizeContentMode(contentModeArg);
@@ -146,22 +146,22 @@ if (require.main === module) {
 
   } else if (sub === 'metadata') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts metadata <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts metadata <debateName>');
     runMetadataPhase(debateName).then(() => console.log('@@METADATA_DONE@@')).catch(die);
 
   } else if (sub === 'thumbnail') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts thumbnail <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts thumbnail <debateName>');
     runThumbnail(debateName).then(p => console.log(`@@THUMB@@ ${p}`)).catch(die);
 
   } else if (sub === 'audio') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts audio <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts audio <debateName>');
     runAudio(debateName, emit).catch(die);
 
   } else if (sub === 'visuals') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts visuals <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts visuals <debateName>');
     emit('visuals');
     generateVisualScenes(debateName)
       .then(plan => {
@@ -172,12 +172,12 @@ if (require.main === module) {
 
   } else if (sub === 'video') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts video <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts video <debateName>');
     runVideoRender(debateName, emit).then(v => console.log(`@@RESULT@@ ${v}`)).catch(die);
 
   } else if (sub === 'extract-reels') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts extract-reels <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts extract-reels <debateName>');
     try {
       const parts = extract(debateName);
       fs.writeFileSync(reelsPartsPath(debateName), JSON.stringify(parts, null, 2), 'utf-8');
@@ -186,7 +186,7 @@ if (require.main === module) {
 
   } else if (sub === 'reels-build') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts reels-build <debateName> --style=style3');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts reels-build <debateName> --style=style3');
     const parts = JSON.parse(fs.readFileSync(reelsPartsPath(debateName), 'utf-8'));
     applySavedReelVisualMode(debateName);
     emit('reels');
@@ -199,7 +199,7 @@ if (require.main === module) {
 
   } else if (sub === 'publish') {
     const debateName = process.argv[3];
-    if (!debateName) fail('Usage: tsx src/runPipeline.ts publish <debateName>');
+    if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts publish <debateName>');
     const targetArg = process.argv.find(arg => arg.startsWith('--target='));
     const target = (targetArg?.slice('--target='.length) || 'all') as PublishTarget;
     if (!['youtube', 'instagram', 'all'].includes(target)) fail('Publish target must be youtube, instagram, or all.');
@@ -212,6 +212,6 @@ if (require.main === module) {
       .catch(die);
 
   } else {
-    fail('Usage: tsx src/runPipeline.ts <script|metadata|thumbnail|visuals|audio|video|extract-reels|reels-build|publish> …');
+    fail('Usage: tsx src/features/pipeline/runPipeline.ts <script|metadata|thumbnail|visuals|audio|video|extract-reels|reels-build|publish> …');
   }
 }

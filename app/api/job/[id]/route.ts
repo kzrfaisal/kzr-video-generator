@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getJob, publicJob } from '@/lib/jobs';
+import { getJob, publicJob } from '@/src/infrastructure/jobs/jobManager';
 
 export const runtime = 'nodejs';
 

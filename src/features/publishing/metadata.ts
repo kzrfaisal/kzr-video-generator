@@ -1,4 +1,4 @@
-import { parseMetadataMarkdown } from '../domain/projects/metadata';
+import { parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 
 export interface SocialMetadata {
   youtubeTitle: string;

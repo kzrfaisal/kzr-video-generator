@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { ensureDir, waitForEnter } from './utils';
+import { ensureDir, waitForEnter } from '@/src/shared/utils';
 import { extract, ExtractedPart } from './extractReelScripts';
-import { run as makeVideo } from './makeVideo';
+import { run as makeVideo } from '@/src/features/rendering/makeVideo';
 import { ensureOutroAudio } from './reelOutro';
 
 function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, outroMp3: string): string {
@@ -91,7 +91,7 @@ if (require.main === module) {
     break;
   }
   if (!debateName) {
-    console.error('Usage: tsx src/makeReels.ts <debate_name>');
+    console.error('Usage: npm run reels -- <debate_name>');
     process.exit(1);
   }
   run(debateName).catch(err => { console.error(err.message); process.exit(1); });

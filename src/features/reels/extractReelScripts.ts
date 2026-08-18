@@ -1,8 +1,8 @@
 import fs from 'fs';
-import { ensureDir, parseDebateFile, DebateLine } from './utils';
+import { ensureDir, parseDebateFile, DebateLine } from '@/src/shared/utils';
 import { outroText } from './reelOutro';
-import { readContentMode, type ContentMode } from './contentMode';
-import { projectPath } from './paths';
+import { readContentMode, type ContentMode } from '@/src/features/projects/contentMode';
+import { projectPath } from '@/src/shared/filesystem/paths';
 
 type Block = { speaker: string; texts: string[]; origIndices: number[] };
 
@@ -125,7 +125,7 @@ export function run(debateName: string): void {
 if (require.main === module) {
   const debateName = process.argv[2];
   if (!debateName) {
-    console.error('Usage: tsx src/extractReelScripts.ts <debate_name>');
+    console.error('Usage: npm run extract-reel-scripts -- <debate_name>');
     process.exit(1);
   }
   try {

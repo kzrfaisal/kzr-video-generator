@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { runStage, isValidDebateName } from '@/lib/stage';
-import { reelPartScriptPath } from '@/src/paths';
+import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { reelPartScriptPath } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
 

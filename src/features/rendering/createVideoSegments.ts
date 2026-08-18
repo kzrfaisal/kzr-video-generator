@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { ensureDir, wrapText, parseDebateFile } from './utils';
-import { config, STYLES, SubtitleStyle } from '../config';
-import { publishMetadata } from './paths';
-import { createInfographicOverlay } from './infographic';
-import { visualSceneForLine } from './visualScenes';
+import { ensureDir, wrapText, parseDebateFile } from '@/src/shared/utils';
+import { config, STYLES, SubtitleStyle } from '@/config';
+import { publishMetadata } from '@/src/shared/filesystem/paths';
+import { createInfographicOverlay } from '@/src/features/visuals/infographic';
+import { visualSceneForLine } from '@/src/features/visuals/visualScenes';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -323,7 +323,7 @@ export function run(debateName: string): void {
 if (require.main === module) {
   const debateName = process.argv[2];
   if (!debateName) {
-    console.error('Usage: tsx src/createVideoSegments.ts <debate_name>');
+    console.error('Usage: tsx src/features/rendering/createVideoSegments.ts <debate_name>');
     process.exit(1);
   }
   try {

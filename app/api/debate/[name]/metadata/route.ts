@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import { runStage, isValidDebateName } from '@/lib/stage';
-import { projectPath, publishDir, publishMetadata } from '@/src/paths';
+import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { projectPath, publishDir, publishMetadata } from '@/src/shared/filesystem/paths';
 import { parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 

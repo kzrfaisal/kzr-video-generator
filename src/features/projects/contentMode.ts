@@ -1,8 +1,8 @@
 import fs from 'fs';
-import { projectPath } from './paths';
-import type { ContentMode } from './domain/projects/types';
+import { projectPath } from '@/src/shared/filesystem/paths';
+import type { ContentMode } from '@/src/domain/projects/types';
 
-export type { ContentMode } from './domain/projects/types';
+export type { ContentMode } from '@/src/domain/projects/types';
 
 export function normalizeContentMode(value: unknown): ContentMode {
   return value === 'narrated-explainer' ? 'narrated-explainer' : 'debate';

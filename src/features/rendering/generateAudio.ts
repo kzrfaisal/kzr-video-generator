@@ -2,8 +2,8 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
-import { ensureDir, parseDebateFile } from './utils';
-import { config } from '../config';
+import { ensureDir, parseDebateFile } from '@/src/shared/utils';
+import { config } from '@/config';
 
 const client = new OpenAI();
 
@@ -65,7 +65,7 @@ export async function run(debateName: string): Promise<{ characters: number; aud
 if (require.main === module) {
   const debateName = process.argv[2];
   if (!debateName) {
-    console.error('Usage: tsx src/generateAudio.ts <debate_name>');
+    console.error('Usage: npm run audio -- <debate_name>');
     process.exit(1);
   }
   run(debateName).then(({ characters, audioCost }) => {

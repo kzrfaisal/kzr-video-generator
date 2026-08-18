@@ -280,7 +280,7 @@ export const VIDEO_STYLES: Record<string, Partial<Config>> = {
  * Read `--style=<name>` (or `--style <name>`) so any CLI entry point can override
  * `baseConfig.videoStyle` without editing this file. Both work:
  *   npm start "topic" --style=style2          (npm consumes the flag → env var)
- *   tsx src/makeVideo.ts deb10 --style=style3 (direct invocation → argv)
+ *   npm run video -- deb10 --style=style3     (direct feature command)
  *   npm run reels deb10 -- --style=style3     (npm with `--` passthrough → argv)
  */
 function parseStyleFlag(): string | undefined {

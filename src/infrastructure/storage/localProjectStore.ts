@@ -1,14 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import { projectPath, scriptPath } from '../../paths';
-import { normalizeContentMode } from '../../contentMode';
-import { reconcileScenes, scriptToLegacyText } from '../../domain/projects/script';
+import { projectPath, scriptPath } from '@/src/shared/filesystem/paths';
+import { normalizeContentMode } from '@/src/features/projects/contentMode';
+import { reconcileScenes, scriptToLegacyText } from '@/src/domain/projects/script';
 import {
   PROJECT_SCHEMA_VERSION,
   type ContentMode,
   type ProjectDocument,
   type ScriptScene,
-} from '../../domain/projects/types';
+} from '@/src/domain/projects/types';
 
 type LegacyProjectRecord = {
   topic?: unknown;
@@ -154,4 +154,3 @@ export function updateProjectScriptFromText(name: string, script: string): Proje
 export function migrateProjectDocument(name: string): ProjectDocument {
   return saveProjectDocument(readProjectDocument(name));
 }
-

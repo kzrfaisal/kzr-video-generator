@@ -1,20 +1,20 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { config } from '../config';
-import { ensureDir, type DebateLine, withRetry } from './utils';
+import { config } from '@/config';
+import { ensureDir, type DebateLine, withRetry } from '@/src/shared/utils';
 import {
   reelsPartsPath,
   visualCreditsPath,
   visualPlanPath,
   visualSceneImagePath,
-} from './paths';
-import { readContentMode } from './contentMode';
-import { readProjectDocument, saveProjectDocument } from './infrastructure/storage/localProjectStore';
-import { scenesToDialogue } from './domain/projects/script';
-import { GeneratedVisualPlanSchema } from './services/openai/schemas';
-import { generateStructured } from './services/openai/structuredOutput';
-import { VISUAL_PROMPT_VERSION, visualDeveloperPrompt, visualUserPrompt } from './services/openai/prompts';
+} from '@/src/shared/filesystem/paths';
+import { readContentMode } from '@/src/features/projects/contentMode';
+import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { scenesToDialogue } from '@/src/domain/projects/script';
+import { GeneratedVisualPlanSchema } from '@/src/services/openai/schemas';
+import { generateStructured } from '@/src/services/openai/structuredOutput';
+import { VISUAL_PROMPT_VERSION, visualDeveloperPrompt, visualUserPrompt } from '@/src/services/openai/prompts';
 
 const LINES_PER_SCENE = 3;
 

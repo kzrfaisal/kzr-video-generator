@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { runStage } from '@/lib/stage';
-import { projectPath } from '@/src/paths';
-import { findMainVideo, findReelVideos, hasAudio } from '@/lib/videos';
+import { runStage } from '@/src/infrastructure/process/runStage';
+import { projectPath } from '@/src/shared/filesystem/paths';
+import { findMainVideo, findReelVideos, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 
 export const runtime = 'nodejs';

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { isValidDebateName } from '@/lib/stage';
-import { regenerateVisualScene } from '@/src/visualScenes';
+import { isValidDebateName } from '@/src/infrastructure/process/runStage';
+import { regenerateVisualScene } from '@/src/features/visuals/visualScenes';
 
 export const runtime = 'nodejs';
 
