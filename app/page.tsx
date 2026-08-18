@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from './components/Icon';
 
 interface ReelScript { part: number; script: string; }
 
@@ -73,6 +74,7 @@ interface Debate {
 }
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
+type Theme = 'light' | 'dark';
 type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 interface JobView { id: string; kind: JobKind; stage: string; status: string; attempt?: number; logs?: string[]; error?: string; }
 
@@ -89,6 +91,7 @@ interface ProjectSummary {
 type AutoStep = null | 'awaiting-script' | 'awaiting-metadata' | 'awaiting-visuals' | 'running' | 'awaiting-reels';
 
 const LS_KEY = 'activeDebate';
+const THEME_KEY = 'kzr-theme';
 const DEFAULT_CFG: RunConfig = {
   contentMode: 'debate',
   visualMode: 'debate',
@@ -110,6 +113,10 @@ function cleanCustom(cs: CustomSubtitle): CustomSubtitle {
     if (v !== undefined && v !== '') (out as Record<string, unknown>)[k] = v;
   }
   return out;
+}
+
+function formatProjectDate(timestamp: number): string {
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(timestamp);
 }
 
 export default function Home() {
@@ -136,6 +143,8 @@ export default function Home() {
   const [visualsConfigured, setVisualsConfigured] = useState(true);
   const [globalBusy, setGlobalBusy] = useState<{ debateName: string; kind: string; stage: string } | null>(null);
   const [previewing, setPreviewing] = useState('');
+  const [theme, setTheme] = useState<Theme>('light');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -149,6 +158,21 @@ export default function Home() {
     });
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    const nextTheme: Theme = saved === 'dark' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    document.body.dataset.theme = nextTheme;
+  }, []);
+
+  function selectTheme(nextTheme: Theme) {
+    setTheme(nextTheme);
+    localStorage.setItem(THEME_KEY, nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    document.body.dataset.theme = nextTheme;
+  }
 
   useEffect(() => {
     if (debate?.debateName) refreshVisuals(debate.debateName);
@@ -479,6 +503,7 @@ export default function Home() {
     setEditScript(''); setEditMetadata(''); setEditReels([]);
     setVisualScenes([]);
     setJob(null); setError(''); setAuto(false); setAutoStep(null);
+    setShowAdvanced(false);
   }
 
   async function openProject(projectName: string) {
@@ -518,14 +543,23 @@ export default function Home() {
     || (visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath));
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell theme-${theme}`}>
       <aside className="sidebar">
-        <div className="brand">KZR Video Studio</div>
-        <button className="new-project" onClick={startNew} disabled={working}>＋ New project</button>
+        <div className="brand">
+          <span className="brand-mark"><Icon name="play" size={15} /></span>
+          <span>KZR Studio</span>
+        </div>
+        <nav className="primary-nav" aria-label="Main navigation">
+          <button className={!debate ? 'nav-item active' : 'nav-item'} onClick={startNew} disabled={working}>
+            <Icon name="home" size={17} /> Home
+          </button>
+          <a className="nav-item" href="#project-library"><Icon name="folder" size={17} /> Projects</a>
+        </nav>
+        <button className="new-project" onClick={startNew} disabled={working}><Icon name="plus" size={16} /> New project</button>
         <div className="sidebar-label">Recent projects</div>
         <div className="project-list">
           {projects.length === 0 && <p className="empty-projects">No projects yet.</p>}
-          {projects.map(project => (
+          {projects.slice(0, 6).map(project => (
             <button
               key={project.debateName}
               className={`project-item ${project.debateName === name ? 'selected' : ''}`}
@@ -537,15 +571,30 @@ export default function Home() {
             </button>
           ))}
         </div>
+        <div className="sidebar-footer">
+          <span className="status-dot" /> Local workspace
+          <small>Your files stay on this computer</small>
+        </div>
       </aside>
       <div className="workspace">
-      <div className="head-row">
+      <header className="topbar">
         <div>
-          <h1>{debate ? debate.topic || debate.debateName : 'Create a video pack'}</h1>
-          <p className="sub">{debate ? debate.debateName : 'One topic becomes a landscape video and three vertical shorts.'}</p>
+          <span className="eyebrow">{debate ? 'Project workspace' : 'AI video workspace'}</span>
+          <h1>{debate ? debate.topic || debate.debateName : 'Create a new video'}</h1>
+          <p className="sub">{debate ? `${debate.debateName} · Edit, render and download your video pack.` : 'Start with a topic, choose a format, then review the draft before rendering.'}</p>
         </div>
-        {debate && <button className="btn-secondary" onClick={startNew} disabled={working}>Start new</button>}
-      </div>
+        <div className="topbar-actions">
+          <button
+            className="icon-button"
+            onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')}
+            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          >
+            <Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} />
+          </button>
+          {debate && <button className="btn-secondary compact" onClick={startNew} disabled={working}><Icon name="plus" size={15} /> New project</button>}
+        </div>
+      </header>
 
       {renderElsewhere && (
         <div className="busy-banner">
@@ -565,51 +614,92 @@ export default function Home() {
       )}
 
       {/* 1 — Topic */}
-      <section className="panel">
-        <h2 className="step-title">1 · Title and context</h2>
-        <label htmlFor="topic">Video title/topic</label>
-        <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
-               placeholder="e.g. AI replacing teachers" disabled={working || !!debate} />
-        <label htmlFor="context">Context <span className="optional">(optional)</span></label>
-        <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
-                  placeholder="Optional angle, facts, events, or details to include…"
-                  disabled={working || !!debate} />
+      <section className={`panel ${debate ? 'project-brief' : 'creation-panel'}`}>
+        {!debate && (
+          <div className="creation-heading">
+            <div className="sparkle"><Icon name="sparkles" size={18} /></div>
+            <div>
+              <h2>Start with your idea</h2>
+              <p>A clear topic and a little context are enough.</p>
+            </div>
+          </div>
+        )}
+        {debate && <h2 className="step-title">1 · Project brief</h2>}
+        <div className="form-section">
+          <div className="field-group">
+            <label htmlFor="topic">What should the video be about?</label>
+            <input id="topic" value={topic} onChange={e => setTopic(e.target.value)}
+                   placeholder="e.g. How the Roman Empire shaped modern cities" disabled={working || !!debate} />
+          </div>
+          <div className="field-group">
+            <label htmlFor="context">Helpful context <span className="optional">Optional</span></label>
+            <textarea id="context" value={context} onChange={e => setContext(e.target.value)}
+                      placeholder="Add key facts, your point of view, target audience, or anything the script should include…"
+                      disabled={working || !!debate} />
+          </div>
+        </div>
         {!debate && (
           <>
-            <label htmlFor="content-format">Content format</label>
-            <select id="content-format" value={cfg.contentMode} disabled={working}
-                    onChange={e => setCfg(c => ({ ...c, contentMode: e.target.value as RunConfig['contentMode'] }))}>
-              <option value="narrated-explainer">Narrated explainer</option>
-              <option value="debate">Two-sided debate</option>
-            </select>
-            <label htmlFor="visual-format">Visual format</label>
-            <select id="visual-format" value={cfg.visualMode} disabled={working}
-                    onChange={e => {
-                      const visualMode = e.target.value as RunConfig['visualMode'];
-                      setCfg(c => ({
-                        ...c,
-                        visualMode,
-                        contentMode: visualMode === 'infographic' ? 'narrated-explainer' : 'debate',
-                      }));
-                    }}>
-              <option value="debate">Character debate</option>
-              <option value="infographic">Infographic cards</option>
-            </select>
-            <div className="row">
+            <div className="setup-grid">
+            <div className="choice-section">
+              <label>Content format</label>
+              <div className="choice-grid two-up">
+                <button type="button" className={`choice-card ${cfg.contentMode === 'narrated-explainer' ? 'selected' : ''}`}
+                        disabled={working} onClick={() => setCfg(c => ({ ...c, contentMode: 'narrated-explainer' }))}>
+                  <span className="choice-icon"><Icon name="user" size={18} /></span><strong>Explainer</strong><small>One narrator makes a topic clear</small>
+                </button>
+                <button type="button" className={`choice-card ${cfg.contentMode === 'debate' ? 'selected' : ''}`}
+                        disabled={working} onClick={() => setCfg(c => ({ ...c, contentMode: 'debate', visualMode: 'debate' }))}>
+                  <span className="choice-icon people"><Icon name="users" size={19} /></span><strong>Debate</strong><small>Two perspectives on one topic</small>
+                </button>
+              </div>
+            </div>
+            <div className="choice-section">
+              <label>Visual style</label>
+              <div className="choice-grid two-up">
+                <button type="button" className={`choice-card visual-choice ${cfg.visualMode === 'infographic' ? 'selected' : ''}`}
+                        disabled={working} onClick={() => setCfg(c => ({ ...c, visualMode: 'infographic', contentMode: 'narrated-explainer' }))}>
+                  <span className="visual-swatch"><Icon name="image" size={20} /></span><strong>Stock visuals</strong><small>Photos, headlines and smooth motion</small>
+                </button>
+                <button type="button" className={`choice-card visual-choice ${cfg.visualMode === 'debate' ? 'selected' : ''}`}
+                        disabled={working} onClick={() => setCfg(c => ({ ...c, visualMode: 'debate' }))}>
+                  <span className="visual-swatch"><Icon name="users" size={20} /></span><strong>Characters</strong><small>Speaker-led studio layout</small>
+                </button>
+              </div>
+            </div>
+            </div>
+            <div className="creation-actions">
               <button onClick={generateAll} disabled={working || renderElsewhere}>
-                {(busy === 'auto' || (busy === 'script' && auto)) ? 'Creating pack…' : 'Create full video pack'}
+                {(busy === 'auto' || (busy === 'script' && auto))
+                  ? (nonstop ? 'Creating your video pack…' : 'Creating your draft…')
+                  : nonstop ? 'Generate complete video pack' : 'Generate draft'}
               </button>
-              <button onClick={generateScript} disabled={working}>
+              <button className="btn-secondary" onClick={generateScript} disabled={working}>
                 {busy === 'script' && !auto ? 'Generating…' : 'Generate script only'}
               </button>
             </div>
-            <label className="check">
+            <label className="check auto-check">
               <input type="checkbox" checked={nonstop} onChange={e => setNonstop(e.target.checked)} disabled={working} />
-              Skip script and metadata reviews and run automatically
+              Run automatically without review pauses
             </label>
           </>
         )}
       </section>
+
+      {!debate && projects.length > 0 && (
+        <section className="dashboard-projects" id="project-library">
+          <div className="section-heading"><div><span className="eyebrow">Your workspace</span><h2>Recent projects</h2></div><span>{projects.length} total</span></div>
+          <div className="project-card-grid">
+            {projects.slice(0, 6).map(project => (
+              <button className="dashboard-project-card" key={project.debateName} onClick={() => openProject(project.debateName)} disabled={working}>
+                <span className="project-cover"><Icon name={project.videoExists ? 'play' : 'folder'} size={18} /></span>
+                <span className="project-card-copy"><strong>{project.topic}</strong><small>{project.videoExists ? `Video ready · ${project.reelsCount}/3 shorts` : project.audioExists ? 'Audio ready' : 'Draft'} · {formatProjectDate(project.updatedAt)}</small></span>
+                <span className="project-arrow"><Icon name="arrow-right" size={16} /></span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {error && <div className="error">{error}</div>}
 
@@ -693,44 +783,28 @@ export default function Home() {
             <h2 className="step-title">4 · YouTube video</h2>
 
             {options && (
-              <div className="config-grid">
+              <>
+              <div className="settings-heading">
                 <div>
-                  <label>Content format</label>
-                  <input value={cfg.contentMode === 'narrated-explainer' ? 'Narrated explainer' : 'Two-sided debate'} disabled />
+                  <strong>Video setup</strong>
+                  <p>Choose the visuals and voices. The recommended render settings are already applied.</p>
+                </div>
+                <button className="advanced-toggle" type="button" onClick={() => setShowAdvanced(value => !value)} disabled={working}>
+                  {showAdvanced ? 'Hide advanced' : 'Advanced settings'} <span>{showAdvanced ? '↑' : '↓'}</span>
+                </button>
+              </div>
+              <div className="config-grid basic-config">
+                <div className="setting-summary">
+                  <span>Format</span>
+                  <strong>{cfg.contentMode === 'narrated-explainer' ? 'Narrated explainer' : 'Two-sided debate'}</strong>
                 </div>
                 <div>
-                  <label>Visual format</label>
+                  <label>Visuals</label>
                   <select value={cfg.visualMode} disabled={working}
                           onChange={e => setCfg(c => ({ ...c, visualMode: e.target.value as RunConfig['visualMode'] }))}>
-                    <option value="debate">Character debate</option>
-                    <option value="infographic">Infographic cards</option>
+                    <option value="debate">Characters</option>
+                    <option value="infographic">Stock visuals</option>
                   </select>
-                </div>
-                <div>
-                  <label>Video style</label>
-                  <select value={cfg.videoStyle} disabled={working}
-                          onChange={e => setCfg(c => ({ ...c, videoStyle: e.target.value }))}>
-                    {options.videoStyles.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label>Subtitle style</label>
-                  <select value={cfg.subtitleStyle} disabled={working}
-                          onChange={e => setCfg(c => ({ ...c, subtitleStyle: e.target.value }))}>
-                    {options.subtitleStyles.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label>TTS model</label>
-                  <select value={cfg.ttsModel} disabled={working}
-                          onChange={e => setCfg(c => ({ ...c, ttsModel: e.target.value }))}>
-                    {options.ttsModels.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label>Speed</label>
-                  <input type="number" step={0.05} min={0.25} max={4} value={cfg.ttsSpeed} disabled={working}
-                         onChange={e => setCfg(c => ({ ...c, ttsSpeed: Number(e.target.value) }))} />
                 </div>
                 {(cfg.contentMode === 'narrated-explainer' ? ['HOST'] as const : ['HOST', 'A', 'B'] as const).map(sp => (
                   <div key={sp}>
@@ -741,23 +815,48 @@ export default function Home() {
                       </select>
                       <button type="button" className="preview-btn" title={`Preview ${cfg.voices[sp]}`}
                               onClick={() => previewVoice(cfg.voices[sp])}>
-                        {previewing === cfg.voices[sp] ? '⏳' : '▶'}
+                        {previewing === cfg.voices[sp] ? <span className="mini-spinner" /> : <Icon name="play" size={15} />}
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-
-            {options && (
-              <div className="custom-sub">
-                <label className="check">
-                  <input type="checkbox" checked={useCustom} disabled={working}
-                         onChange={e => setUseCustom(e.target.checked)} />
-                  Customize subtitle (overrides the subtitle style above)
-                </label>
-                {useCustom && (
+              {showAdvanced && (
+                <div className="advanced-panel">
                   <div className="config-grid">
+                    <div>
+                      <label>Video style</label>
+                      <select value={cfg.videoStyle} disabled={working}
+                              onChange={e => setCfg(c => ({ ...c, videoStyle: e.target.value }))}>
+                        {options.videoStyles.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label>Subtitle style</label>
+                      <select value={cfg.subtitleStyle} disabled={working}
+                              onChange={e => setCfg(c => ({ ...c, subtitleStyle: e.target.value }))}>
+                        {options.subtitleStyles.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label>Voice model</label>
+                      <select value={cfg.ttsModel} disabled={working}
+                              onChange={e => setCfg(c => ({ ...c, ttsModel: e.target.value }))}>
+                        {options.ttsModels.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label>Speaking speed</label>
+                      <input type="number" step={0.05} min={0.25} max={4} value={cfg.ttsSpeed} disabled={working}
+                             onChange={e => setCfg(c => ({ ...c, ttsSpeed: Number(e.target.value) }))} />
+                    </div>
+                  </div>
+                  <label className="check advanced-check">
+                    <input type="checkbox" checked={useCustom} disabled={working}
+                           onChange={e => setUseCustom(e.target.checked)} />
+                    Use custom subtitle styling
+                  </label>
+                  {useCustom && <div className="config-grid subtitle-controls">
                     <div>
                       <label>Position</label>
                       <select value={cs.position} disabled={working} onChange={e => setCustom('position', e.target.value)}>
@@ -786,9 +885,10 @@ export default function Home() {
                     <div><label>Margin (px)</label>
                       <input type="number" min={0} max={1000} value={cs.margin} disabled={working}
                              onChange={e => setCustom('margin', Number(e.target.value))} /></div>
-                  </div>
-                )}
-              </div>
+                  </div>}
+                </div>
+              )}
+              </>
             )}
 
             {cfg.visualMode === 'infographic' && (
