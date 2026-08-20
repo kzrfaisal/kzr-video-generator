@@ -31,6 +31,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (c.visualMode && !['debate', 'infographic'].includes(c.visualMode)) {
     return NextResponse.json({ error: `Invalid visual mode: ${c.visualMode}` }, { status: 400 });
   }
+  if (c.visualPacing && !['relaxed', 'balanced', 'detailed'].includes(c.visualPacing)) {
+    return NextResponse.json({ error: `Invalid visual pacing: ${c.visualPacing}` }, { status: 400 });
+  }
   if (c.contentMode && !['debate', 'narrated-explainer'].includes(c.contentMode)) {
     return NextResponse.json({ error: `Invalid content mode: ${c.contentMode}` }, { status: 400 });
   }
@@ -70,6 +73,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
       .forEach(stage => invalidated.add(stage as PipelineStage));
   }
   if (c.visualMode !== undefined && changed('visualMode')) {
+    ['visuals', 'thumbnail', 'video', 'reels', 'publishing']
+      .forEach(stage => invalidated.add(stage as PipelineStage));
+  }
+  if (c.visualPacing !== undefined && changed('visualPacing')) {
     ['visuals', 'thumbnail', 'video', 'reels', 'publishing']
       .forEach(stage => invalidated.add(stage as PipelineStage));
   }

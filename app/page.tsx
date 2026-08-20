@@ -5,8 +5,24 @@ import { Icon } from './components/Icon';
 
 interface ReelScript { part: number; script: string; }
 
+interface ScriptScene {
+  id: string;
+  speaker: 'HOST' | 'A' | 'B';
+  narration: string;
+  headline: string;
+  visualQuery: string;
+  visualType: 'stock-photo' | 'character' | 'generated-image' | 'none';
+  visualAssetPath: string | null;
+  durationHintSeconds: number | null;
+  overlays: Array<{ id: string; type: 'headline' | 'label' | 'fact'; text: string }>;
+  status: 'draft' | 'ready' | 'generating' | 'failed';
+}
+
 interface VisualScene {
   id: string;
+  scriptSceneIds?: string[];
+  lineStart?: number;
+  lineEnd?: number;
   headline: string;
   searchQuery: string;
   imagePath?: string;
@@ -31,6 +47,7 @@ interface CustomSubtitle {
 interface RunConfig {
   contentMode: 'debate' | 'narrated-explainer';
   visualMode: 'debate' | 'infographic';
+  visualPacing: 'relaxed' | 'balanced' | 'detailed';
   voices: { HOST: string; A: string; B: string };
   ttsModel: string;
   ttsSpeed: number;
@@ -58,12 +75,20 @@ interface PublishState {
   error?: string;
 }
 
+interface ProjectMetadata {
+  youtube: { title: string; description: string; hashtags: string[] };
+  reels: Array<{ part: 1 | 2 | 3; caption: string }>;
+  thumbnailHook: string;
+}
+
 interface Debate {
   debateName: string;
   topic: string;
   context: string;
   script: string;
+  scenes: ScriptScene[];
   metadata: string | null;
+  metadataFields: ProjectMetadata | null;
   config: Partial<RunConfig> | null;
   thumbnailExists: boolean;
   audioExists: boolean;
@@ -75,6 +100,8 @@ interface Debate {
 
 type PublishTarget = 'youtube' | 'instagram' | 'all';
 type Theme = 'light' | 'dark';
+type WorkspaceSection = 'overview' | 'storyboard' | 'metadata' | 'video' | 'shorts' | 'publish';
+type ScriptView = 'review' | 'focus';
 type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 interface JobView { id: string; kind: JobKind; stage: string; status: string; attempt?: number; logs?: string[]; error?: string; }
 
@@ -95,6 +122,7 @@ const THEME_KEY = 'kzr-theme';
 const DEFAULT_CFG: RunConfig = {
   contentMode: 'debate',
   visualMode: 'debate',
+  visualPacing: 'balanced',
   voices: { HOST: 'alloy', A: 'echo', B: 'ash' },
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -124,8 +152,9 @@ export default function Home() {
   const [context, setContext] = useState('');
   const [debate, setDebate] = useState<Debate | null>(null);
 
-  const [editScript, setEditScript] = useState('');
-  const [editMetadata, setEditMetadata] = useState('');
+  const [editScenes, setEditScenes] = useState<ScriptScene[]>([]);
+  const [selectedSceneId, setSelectedSceneId] = useState('');
+  const [editMetadataFields, setEditMetadataFields] = useState<ProjectMetadata | null>(null);
   const [editReels, setEditReels] = useState<ReelScript[]>([]);
 
   const [job, setJob] = useState<JobView | null>(null);
@@ -145,6 +174,8 @@ export default function Home() {
   const [previewing, setPreviewing] = useState('');
   const [theme, setTheme] = useState<Theme>('light');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('overview');
+  const [scriptView, setScriptView] = useState<ScriptView>('review');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -211,7 +242,9 @@ export default function Home() {
       topic: d.topic ?? '',
       context: d.context ?? '',
       script: d.script ?? '',
+      scenes: d.scenes ?? [],
       metadata: d.metadata ?? null,
+      metadataFields: d.metadataFields ?? null,
       config: d.config ?? null,
       thumbnailExists: d.thumbnailExists ?? false,
       audioExists: d.audioExists ?? false,
@@ -223,8 +256,9 @@ export default function Home() {
     setDebate(norm);
     setTopic(norm.topic);
     setContext(norm.context);
-    setEditScript(norm.script);
-    setEditMetadata(norm.metadata ?? '');
+    setEditScenes(norm.scenes);
+    setSelectedSceneId(current => norm.scenes.some(scene => scene.id === current) ? current : (norm.scenes[0]?.id ?? ''));
+    setEditMetadataFields(norm.metadataFields);
     setEditReels(norm.reelScripts);
     setCfg({
       ...DEFAULT_CFG,
@@ -317,27 +351,30 @@ export default function Home() {
       body: JSON.stringify({ config: selectedConfig }),
     }));
     loadDebate({ ...data, config: selectedConfig });
+    setWorkspaceSection('storyboard');
     await refreshProjects();
     return data.debateName as string;
   };
-  const rawSaveScript = async (name = debate!.debateName) => {
-    await jsonOrThrow(await fetch(`/api/debate/${name}/script`, {
+  const rawSaveScenes = async (name = debate!.debateName) => {
+    const data = await jsonOrThrow(await fetch(`/api/debate/${name}/scenes`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: editScript }),
+      body: JSON.stringify({ scenes: editScenes }),
     }));
-    setDebate(d => (d ? { ...d, script: editScript } : d));
+    setEditScenes(data.scenes);
+    setDebate(d => (d ? { ...d, script: data.script, scenes: data.scenes } : d));
   };
   const rawMetadata = async (name = debate!.debateName) => {
     const data = await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, { method: 'POST' }));
-    setEditMetadata(data.metadata);
-    setDebate(d => (d ? { ...d, metadata: data.metadata } : d));
+    setEditMetadataFields(data.metadataFields);
+    setDebate(d => (d ? { ...d, metadata: data.metadata, metadataFields: data.metadataFields } : d));
   };
   const rawSaveMetadata = async (name = debate!.debateName) => {
-    await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, {
+    if (!editMetadataFields) throw new Error('Generate metadata first.');
+    const data = await jsonOrThrow(await fetch(`/api/debate/${name}/metadata`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ metadata: editMetadata }),
+      body: JSON.stringify({ metadataFields: editMetadataFields }),
     }));
-    setDebate(d => (d ? { ...d, metadata: editMetadata } : d));
+    setDebate(d => (d ? { ...d, metadata: data.metadata, metadataFields: data.metadataFields } : d));
   };
   const saveConfig = async (name = debate!.debateName) => {
     await jsonOrThrow(await fetch(`/api/debate/${name}/config`, {
@@ -381,7 +418,7 @@ export default function Home() {
 
   // ---- manual buttons ----
   const generateScript = () => call('script', async () => { await rawScript(); });
-  const saveScript = () => call('save-script', rawSaveScript);
+  const saveScenes = () => call('save-scenes', rawSaveScenes);
   const generateMetadata = () => call('metadata', rawMetadata);
   const saveMetadata = () => call('save-metadata', rawSaveMetadata);
   const generateThumbnail = () => call('thumbnail', rawThumbnail);
@@ -444,11 +481,20 @@ export default function Home() {
   async function continueAfterScript() {
     setError(''); setBusy('auto'); setAutoStep('running');
     try {
-      if (editScript !== debate!.script) await rawSaveScript();
+      if (JSON.stringify(editScenes) !== JSON.stringify(debate!.scenes)) await rawSaveScenes();
       await rawMetadata();
-      setAutoStep('awaiting-metadata');
+      if (cfg.visualMode === 'infographic') {
+        await rawVisuals();
+        await rawThumbnail();
+        setAutoStep('awaiting-visuals');
+        setWorkspaceSection('storyboard');
+      } else {
+        await rawThumbnail();
+        await renderAfterReviews();
+        setWorkspaceSection('video');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Metadata generation failed.');
+      setError(err instanceof Error ? err.message : 'Could not prepare the video.');
       setAutoStep('awaiting-script');
     } finally { setBusy(''); }
   }
@@ -456,18 +502,13 @@ export default function Home() {
   async function continueAfterMetadata() {
     setError(''); setBusy('auto'); setAutoStep('running');
     try {
-      if (editMetadata !== debate!.metadata) await rawSaveMetadata();
-      if (cfg.visualMode === 'infographic') {
-        await rawVisuals();
-        await rawThumbnail();
-        setAutoStep('awaiting-visuals');
-      } else {
-        await rawThumbnail();
-        await renderAfterReviews();
-      }
+      if (JSON.stringify(editMetadataFields) !== JSON.stringify(debate!.metadataFields)) await rawSaveMetadata();
+      await rawThumbnail();
+      setAuto(false); setAutoStep(null);
+      setWorkspaceSection('publish');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Auto run failed.');
-      setAutoStep('awaiting-metadata');
+      setAutoStep(null);
     } finally { setBusy(''); }
   }
 
@@ -483,7 +524,7 @@ export default function Home() {
 
   async function continueAfterVisuals() {
     setError(''); setBusy('auto'); setAutoStep('running');
-    try { await renderAfterReviews(); }
+    try { await renderAfterReviews(); setWorkspaceSection('video'); }
     catch (err) {
       setError(err instanceof Error ? err.message : 'Render failed.');
       setAutoStep('awaiting-visuals');
@@ -492,7 +533,7 @@ export default function Home() {
 
   async function continueAfterReels() {
     setError(''); setBusy('auto'); setAutoStep('running');
-    try { await rawReels(); setAuto(false); setAutoStep(null); }
+    try { await rawReels(); setAuto(false); setAutoStep(null); setWorkspaceSection('metadata'); }
     catch (err) { setError(err instanceof Error ? err.message : 'Reel build failed.'); setAutoStep('awaiting-reels'); }
     finally { setBusy(''); }
   }
@@ -500,10 +541,12 @@ export default function Home() {
   function startNew() {
     localStorage.removeItem(LS_KEY);
     setDebate(null); setTopic(''); setContext('');
-    setEditScript(''); setEditMetadata(''); setEditReels([]);
+    setEditScenes([]); setSelectedSceneId(''); setEditMetadataFields(null); setEditReels([]);
     setVisualScenes([]);
     setJob(null); setError(''); setAuto(false); setAutoStep(null);
     setShowAdvanced(false);
+    setWorkspaceSection('overview');
+    setScriptView('review');
   }
 
   async function openProject(projectName: string) {
@@ -511,6 +554,7 @@ export default function Home() {
     await call('open-project', async () => {
       const data = await jsonOrThrow(await fetch(`/api/debate/${projectName}`));
       loadDebate(data);
+      setWorkspaceSection('overview');
     });
   }
 
@@ -531,6 +575,154 @@ export default function Home() {
   const setCustom = (k: keyof CustomSubtitle, v: string | number) =>
     setCfg(c => ({ ...c, customSubtitle: { ...(c.customSubtitle ?? DEFAULT_CUSTOM), [k]: v } }));
 
+  const selectedScene = editScenes.find(scene => scene.id === selectedSceneId) ?? editScenes[0];
+  const sceneEditsChanged = !!debate && JSON.stringify(editScenes) !== JSON.stringify(debate.scenes);
+  const hasInvalidScenes = editScenes.length === 0 || editScenes.some(scene => !scene.narration.trim());
+  const totalWords = editScenes.reduce((sum, scene) => sum + scene.narration.trim().split(/\s+/).filter(Boolean).length, 0);
+  const estimatedSeconds = Math.max(1, Math.round(totalWords / 2.35));
+  const metadataChanged = !!debate && JSON.stringify(editMetadataFields) !== JSON.stringify(debate.metadataFields);
+  const metadataInvalid = !editMetadataFields
+    || !editMetadataFields.youtube.title.trim()
+    || !editMetadataFields.youtube.description.trim()
+    || editMetadataFields.youtube.hashtags.length < 8
+    || editMetadataFields.youtube.hashtags.length > 12
+    || editMetadataFields.youtube.hashtags.some(tag => !/^#[a-z0-9]+$/.test(tag))
+    || !editMetadataFields.thumbnailHook.trim()
+    || editMetadataFields.reels.some(reel => !reel.caption.trim());
+
+  function updateYoutubeMetadata(field: 'title' | 'description', value: string) {
+    setEditMetadataFields(current => current ? {
+      ...current,
+      youtube: { ...current.youtube, [field]: value },
+    } : current);
+  }
+
+  function updateHashtags(value: string) {
+    const hashtags = value.split(/[\s,]+/).filter(Boolean).map(tag => {
+      const clean = tag.toLowerCase().replace(/^#/, '').replace(/[^a-z0-9]/g, '');
+      return clean ? `#${clean}` : '';
+    }).filter(Boolean);
+    setEditMetadataFields(current => current ? {
+      ...current,
+      youtube: { ...current.youtube, hashtags },
+    } : current);
+  }
+
+  function updateReelCaption(part: 1 | 2 | 3, caption: string) {
+    setEditMetadataFields(current => current ? {
+      ...current,
+      reels: current.reels.map(reel => reel.part === part ? { ...reel, caption } : reel),
+    } : current);
+  }
+
+  function updateSelectedScene(patch: Partial<ScriptScene>) {
+    if (!selectedScene) return;
+    updateScene(selectedScene.id, patch);
+  }
+
+  function updateScene(sceneId: string, patch: Partial<ScriptScene>) {
+    setEditScenes(items => items.map(scene => scene.id === sceneId ? { ...scene, ...patch } : scene));
+  }
+
+  function nextSceneId(): string {
+    const highest = editScenes.reduce((max, scene) => {
+      const value = Number(scene.id.match(/\d+$/)?.[0] ?? 0);
+      return Math.max(max, value);
+    }, 0);
+    return `scene-${String(highest + 1).padStart(3, '0')}`;
+  }
+
+  function addScene() {
+    const id = nextSceneId();
+    const previousSpeaker = editScenes.at(-1)?.speaker ?? 'B';
+    const speaker: ScriptScene['speaker'] = cfg.contentMode === 'narrated-explainer'
+      ? 'HOST'
+      : previousSpeaker === 'A' ? 'B' : 'A';
+    const scene: ScriptScene = {
+      id,
+      speaker,
+      narration: '',
+      headline: '',
+      visualQuery: '',
+      visualType: cfg.visualMode === 'infographic' ? 'stock-photo' : 'character',
+      visualAssetPath: null,
+      durationHintSeconds: null,
+      overlays: [],
+      status: 'draft',
+    };
+    setEditScenes(items => [...items, scene]);
+    setSelectedSceneId(id);
+  }
+
+  function duplicateStoryboardScene(sceneId: string) {
+    const source = editScenes.find(scene => scene.id === sceneId);
+    if (!source) return;
+    const copy: ScriptScene = {
+      ...source,
+      id: nextSceneId(),
+      visualAssetPath: null,
+      overlays: source.overlays.map(overlay => ({ ...overlay })),
+      status: 'draft',
+    };
+    setEditScenes(items => {
+      const index = items.findIndex(scene => scene.id === sceneId);
+      return [...items.slice(0, index + 1), copy, ...items.slice(index + 1)];
+    });
+  }
+
+  function deleteStoryboardScene(sceneId: string) {
+    if (editScenes.length <= 1) return;
+    setEditScenes(items => items.filter(scene => scene.id !== sceneId));
+  }
+
+  function moveStoryboardScene(sceneId: string, direction: -1 | 1) {
+    setEditScenes(items => {
+      const index = items.findIndex(scene => scene.id === sceneId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= items.length) return items;
+      const reordered = [...items];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  }
+
+  function duplicateScene() {
+    if (!selectedScene) return;
+    const id = nextSceneId();
+    const copy: ScriptScene = {
+      ...selectedScene,
+      id,
+      visualAssetPath: null,
+      overlays: selectedScene.overlays.map(overlay => ({ ...overlay })),
+      status: 'draft',
+    };
+    setEditScenes(items => {
+      const index = items.findIndex(scene => scene.id === selectedScene.id);
+      return [...items.slice(0, index + 1), copy, ...items.slice(index + 1)];
+    });
+    setSelectedSceneId(id);
+  }
+
+  function deleteScene() {
+    if (!selectedScene || editScenes.length <= 1) return;
+    const index = editScenes.findIndex(scene => scene.id === selectedScene.id);
+    const remaining = editScenes.filter(scene => scene.id !== selectedScene.id);
+    setEditScenes(remaining);
+    setSelectedSceneId(remaining[Math.min(index, remaining.length - 1)]?.id ?? '');
+  }
+
+  function moveScene(direction: -1 | 1) {
+    if (!selectedScene) return;
+    const index = editScenes.findIndex(scene => scene.id === selectedScene.id);
+    const target = index + direction;
+    if (target < 0 || target >= editScenes.length) return;
+    setEditScenes(items => {
+      const reordered = [...items];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  }
+
   const working = busy !== '' || job !== null;
   const name = debate?.debateName;
   const cs = cfg.customSubtitle ?? DEFAULT_CUSTOM;
@@ -541,13 +733,23 @@ export default function Home() {
   const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
   const visualsReady = cfg.visualMode !== 'infographic'
     || (visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath));
+  const assignedSceneIds = new Set<string>();
+  const storyboardGroups: Array<{ id: string; visual: VisualScene | null; scenes: ScriptScene[] }> = visualScenes.map(visual => {
+    const scenes = editScenes.filter((scene, index) => visual.scriptSceneIds?.includes(scene.id)
+      || (visual.lineStart !== undefined && visual.lineEnd !== undefined && index >= visual.lineStart && index <= visual.lineEnd));
+    scenes.forEach(scene => assignedSceneIds.add(scene.id));
+    return { id: visual.id, visual, scenes };
+  }).filter(group => group.scenes.length > 0);
+  for (const scene of editScenes) {
+    if (!assignedSceneIds.has(scene.id)) storyboardGroups.push({ id: scene.id, visual: null, scenes: [scene] });
+  }
 
   return (
     <main className={`app-shell theme-${theme}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark"><Icon name="play" size={15} /></span>
-          <span>KZR Studio</span>
+          <span><b>KZR</b> Studio</span>
         </div>
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={!debate ? 'nav-item active' : 'nav-item'} onClick={startNew} disabled={working}>
@@ -592,7 +794,6 @@ export default function Home() {
           >
             <Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} />
           </button>
-          {debate && <button className="btn-secondary compact" onClick={startNew} disabled={working}><Icon name="plus" size={15} /> New project</button>}
         </div>
       </header>
 
@@ -614,6 +815,7 @@ export default function Home() {
       )}
 
       {/* 1 — Topic */}
+      {(!debate || workspaceSection === 'overview') && (
       <section className={`panel ${debate ? 'project-brief' : 'creation-panel'}`}>
         {!debate && (
           <div className="creation-heading">
@@ -622,6 +824,13 @@ export default function Home() {
               <h2>Start with your idea</h2>
               <p>A clear topic and a little context are enough.</p>
             </div>
+          </div>
+        )}
+        {!debate && (
+          <div className="wizard-steps" aria-label="Video setup steps">
+            <span className="current"><b>1</b> Details</span>
+            <span><b>2</b> Format</span>
+            <span><b>3</b> Style</span>
           </div>
         )}
         {debate && <h2 className="step-title">1 · Project brief</h2>}
@@ -685,6 +894,7 @@ export default function Home() {
           </>
         )}
       </section>
+      )}
 
       {!debate && projects.length > 0 && (
         <section className="dashboard-projects" id="project-library">
@@ -705,7 +915,31 @@ export default function Home() {
 
       {debate && (
         <>
-          <section className="status-grid" aria-label="Project status">
+          <nav className="workspace-tabs" aria-label="Project workflow">
+            {([
+              ['overview', 'Overview'],
+              ['storyboard', 'Storyboard'],
+              ['video', 'Video'],
+              ['shorts', 'Shorts'],
+              ['metadata', 'Metadata'],
+              ['publish', 'Publish'],
+            ] as Array<[WorkspaceSection, string]>).map(([section, label]) => (
+              <button
+                key={section}
+                type="button"
+                className={workspaceSection === section ? 'active' : ''}
+                onClick={() => setWorkspaceSection(section)}
+              >
+                {label}
+                {section === 'storyboard' && <span className="tab-status complete" />}
+                {section === 'metadata' && <span className={`tab-status ${debate.metadata ? 'complete' : ''}`} />}
+                {section === 'video' && <span className={`tab-status ${debate.videoExists ? 'complete' : ''}`} />}
+                {section === 'shorts' && <span className={`tab-status ${debate.reelsCount === 3 ? 'complete' : ''}`} />}
+              </button>
+            ))}
+          </nav>
+
+          {workspaceSection === 'overview' && <section className="status-grid" aria-label="Project status">
             <div className="status-card complete"><span>Script</span><strong>Ready</strong></div>
             <div className={`status-card ${debate.metadata ? 'complete' : ''}`}><span>Metadata</span><strong>{debate.metadata ? 'Ready' : 'Pending'}</strong></div>
             <div className={`status-card ${debate.videoExists ? 'complete' : ''}`}><span>Main video</span><strong>{debate.videoExists ? 'Ready' : 'Pending'}</strong></div>
@@ -716,9 +950,9 @@ export default function Home() {
                 <strong>{visualScenes.filter(scene => scene.imagePath).length}/{visualScenes.length || '—'}</strong>
               </div>
             )}
-          </section>
+          </section>}
 
-          {(debate.videoExists || debate.reelsCount > 0) && (
+          {workspaceSection === 'overview' && (debate.videoExists || debate.reelsCount > 0) && (
             <section className="download-panel">
               <div>
                 <strong>Your files are ready</strong>
@@ -729,58 +963,306 @@ export default function Home() {
           )}
 
           {/* 2 — Script */}
-          <section className="panel">
-            <h2 className="step-title">2 · Script</h2>
-            <textarea className="mono" rows={14} value={editScript}
-                      onChange={e => setEditScript(e.target.value)} disabled={working} />
-            <div className="row">
-              <button className="btn-secondary" onClick={saveScript}
-                      disabled={working || editScript === debate.script}>
-                {busy === 'save-script' ? 'Saving…' : 'Save script'}
-              </button>
-              {autoStep === 'awaiting-script' && (
-                <button onClick={continueAfterScript} disabled={working || renderElsewhere}>
-                  Continue → metadata &amp; video
-                </button>
+          {workspaceSection === 'storyboard' && (
+          <section className="panel scene-editor-panel">
+            <div className="scene-editor-heading">
+              <div>
+                <span className="step-title">2 · Script editor</span>
+                <h2>Shape the story, scene by scene</h2>
+                <p>Edit the narration and visual direction without touching raw JSON.</p>
+              </div>
+              <div className="script-header-tools">
+                <div className="script-summary" aria-label="Script summary">
+                  <span><strong>{editScenes.length}</strong> scenes</span>
+                  <span><strong>{totalWords}</strong> words</span>
+                  <span><strong>~{Math.ceil(estimatedSeconds / 60)} min</strong> voice</span>
+                </div>
+              </div>
+            </div>
+
+            {true ? (
+              <div className="storyboard-review">
+                {cfg.visualMode === 'infographic' && (
+                  <div className="storyboard-visual-bar">
+                    <div>
+                      <strong>Pictures and script together</strong>
+                      <p>{visualScenes.length > 0 ? `${visualScenes.length} pictures across ${editScenes.length} subtitle segments.` : 'Choose how often the picture should change, then generate the storyboard.'}</p>
+                    </div>
+                    <div className="storyboard-visual-actions">
+                      <label className="visual-pacing-control">
+                        <span>Picture pacing</span>
+                        <select value={cfg.visualPacing} disabled={working} onChange={event => setCfg(current => ({ ...current, visualPacing: event.target.value as RunConfig['visualPacing'] }))}>
+                          <option value="relaxed">Relaxed · every 3 subtitles</option>
+                          <option value="balanced">Balanced · every 2 subtitles</option>
+                          <option value="detailed">Detailed · every subtitle</option>
+                        </select>
+                      </label>
+                      <button type="button" className="btn-secondary compact" onClick={generateVisuals} disabled={!visualsConfigured || working || renderElsewhere || sceneEditsChanged || hasInvalidScenes}>
+                        {job?.kind === 'visuals' ? 'Finding pictures…' : visualScenes.length > 0 ? 'Regenerate pictures' : visualsConfigured ? 'Generate pictures' : 'Pexels key required'}
+                      </button>
+                      {autoStep === 'awaiting-visuals' && <button type="button" className="compact" onClick={continueAfterVisuals} disabled={working || renderElsewhere || !visualsReady}>Continue to video</button>}
+                    </div>
+                  </div>
+                )}
+                <div className="storyboard-list">
+                  {storyboardGroups.map((group, groupIndex) => {
+                    const firstScene = group.scenes[0];
+                    const firstIndex = editScenes.findIndex(scene => scene.id === firstScene.id);
+                    const lastIndex = editScenes.findIndex(scene => scene.id === group.scenes[group.scenes.length - 1].id);
+                    const visual = group.visual;
+                    return (
+                      <article className="storyboard-scene" key={group.id}>
+                        <div className="storyboard-picture">
+                          {cfg.visualMode === 'infographic' ? (
+                            visual?.imagePath
+                              ? <img src={`/api/debate/${name}/visuals/${visual.id}/image?t=${nonce}`} alt={firstScene.headline || `Picture ${groupIndex + 1}`} />
+                              : <div className="storyboard-placeholder"><Icon name="image" size={22} /><span>No picture yet</span></div>
+                          ) : (
+                            <div className="storyboard-placeholder character"><Icon name="users" size={24} /><span>{firstScene.speaker === 'HOST' ? 'Host' : `Speaker ${firstScene.speaker}`}</span></div>
+                          )}
+                          <span className="storyboard-index">{firstIndex === lastIndex ? String(firstIndex + 1).padStart(2, '0') : `${String(firstIndex + 1).padStart(2, '0')}–${String(lastIndex + 1).padStart(2, '0')}`}</span>
+                          {group.scenes.length > 1 && <span className="shared-visual">{group.scenes.length} subtitles</span>}
+                        </div>
+                        <div className="storyboard-copy">
+                          <div className="storyboard-group-headline">
+                            <label htmlFor={`headline-${group.id}`}>On-screen headline · shared with this picture</label>
+                            <input
+                              id={`headline-${group.id}`}
+                              value={firstScene.headline}
+                              onChange={event => {
+                                const sceneIds = new Set(group.scenes.map(scene => scene.id));
+                                setEditScenes(items => items.map(scene => sceneIds.has(scene.id) ? { ...scene, headline: event.target.value } : scene));
+                              }}
+                              disabled={working}
+                              placeholder="Short visual headline"
+                            />
+                          </div>
+                          {group.scenes.map(scene => {
+                            const index = editScenes.findIndex(item => item.id === scene.id);
+                            return <div className="storyboard-script-segment" key={scene.id}>
+                              <div className="storyboard-row-heading">
+                                <span>Subtitle {index + 1} · {scene.speaker === 'HOST' ? 'Narrator' : `Speaker ${scene.speaker}`}</span>
+                                <div className="storyboard-scene-tools" aria-label={`Actions for subtitle ${index + 1}`}>
+                                  <button type="button" onClick={() => moveStoryboardScene(scene.id, -1)} disabled={working || index === 0} title="Move up" aria-label="Move subtitle up"><Icon name="arrow-up" size={14} /></button>
+                                  <button type="button" onClick={() => moveStoryboardScene(scene.id, 1)} disabled={working || index === editScenes.length - 1} title="Move down" aria-label="Move subtitle down"><Icon name="arrow-down" size={14} /></button>
+                                  <button type="button" onClick={() => duplicateStoryboardScene(scene.id)} disabled={working} title="Duplicate" aria-label="Duplicate subtitle"><Icon name="copy" size={14} /></button>
+                                  <button type="button" className="danger-tool" onClick={() => deleteStoryboardScene(scene.id)} disabled={working || editScenes.length <= 1} title="Delete" aria-label="Delete subtitle"><Icon name="trash" size={14} /></button>
+                                </div>
+                              </div>
+                              <label htmlFor={`narration-${scene.id}`}>Narration</label>
+                              <textarea id={`narration-${scene.id}`} value={scene.narration} onChange={event => updateScene(scene.id, { narration: event.target.value })} disabled={working} placeholder="Narration for this subtitle…" />
+                            </div>
+                          })}
+                          {cfg.visualMode === 'infographic' && (
+                            <div className="storyboard-visual-controls">
+                              <div>
+                                <label htmlFor={`visual-${group.id}`}>Picture shared by {group.scenes.length} subtitle{group.scenes.length === 1 ? '' : 's'}</label>
+                                <input
+                                  id={`visual-${group.id}`}
+                                  value={visual?.searchQuery ?? firstScene.visualQuery}
+                                  onChange={event => visual
+                                    ? setVisualScenes(items => items.map(item => item.id === visual.id ? { ...item, searchQuery: event.target.value } : item))
+                                    : updateScene(firstScene.id, { visualQuery: event.target.value })}
+                                  disabled={working}
+                                  placeholder="Describe the picture"
+                                />
+                              </div>
+                              {visual && <button type="button" className="btn-secondary" onClick={() => regenerateVisual(visual)} disabled={working}>{busy === `visual-${visual.id}` ? 'Replacing…' : 'Replace'}</button>}
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  <button type="button" className="storyboard-add" onClick={addScene} disabled={working}><Icon name="plus" size={15} /> Add scene</button>
+                </div>
+              </div>
+            ) : (
+            <div className="scene-editor">
+              <aside className="scene-list-panel" aria-label="Script scenes">
+                <div className="scene-list-heading">
+                  <span>Scenes</span>
+                  <button className="scene-add-button" type="button" onClick={addScene} disabled={working}>
+                    <Icon name="plus" size={14} /> Add
+                  </button>
+                </div>
+                <div className="scene-list">
+                  {editScenes.map((scene, index) => (
+                    <button
+                      type="button"
+                      key={scene.id}
+                      className={`scene-list-item ${scene.id === selectedScene?.id ? 'selected' : ''}`}
+                      onClick={() => setSelectedSceneId(scene.id)}
+                      disabled={working}
+                    >
+                      <span className="scene-number">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="scene-list-copy">
+                        <span className="scene-list-meta">
+                          <strong>{scene.headline.trim() || `Scene ${index + 1}`}</strong>
+                          <small>{scene.speaker === 'HOST' ? 'Narrator' : `Speaker ${scene.speaker}`}</small>
+                        </span>
+                        <span className="scene-preview">{scene.narration.trim() || 'Add narration…'}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+
+              {selectedScene && (
+                <div className="scene-detail-panel">
+                  <div className="scene-toolbar">
+                    <div>
+                      <span className="editor-kicker">Selected scene</span>
+                      <strong>Scene {editScenes.findIndex(scene => scene.id === selectedScene.id) + 1}</strong>
+                    </div>
+                    <div className="scene-tools" aria-label="Scene actions">
+                      <button type="button" onClick={() => moveScene(-1)} disabled={working || editScenes[0]?.id === selectedScene.id} title="Move scene up" aria-label="Move scene up"><Icon name="arrow-up" size={15} /></button>
+                      <button type="button" onClick={() => moveScene(1)} disabled={working || editScenes[editScenes.length - 1]?.id === selectedScene.id} title="Move scene down" aria-label="Move scene down"><Icon name="arrow-down" size={15} /></button>
+                      <button type="button" onClick={duplicateScene} disabled={working} title="Duplicate scene" aria-label="Duplicate scene"><Icon name="copy" size={15} /></button>
+                      <button type="button" className="danger-tool" onClick={deleteScene} disabled={working || editScenes.length <= 1} title="Delete scene" aria-label="Delete scene"><Icon name="trash" size={15} /></button>
+                    </div>
+                  </div>
+
+                  <div className="scene-fields-grid">
+                    <div>
+                      <label htmlFor="scene-speaker">Voice</label>
+                      <select
+                        id="scene-speaker"
+                        value={selectedScene.speaker}
+                        onChange={event => updateSelectedScene({ speaker: event.target.value as ScriptScene['speaker'] })}
+                        disabled={working || cfg.contentMode === 'narrated-explainer'}
+                      >
+                        {cfg.contentMode === 'narrated-explainer'
+                          ? <option value="HOST">Narrator</option>
+                          : <><option value="A">Speaker A</option><option value="B">Speaker B</option></>}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="scene-headline">On-screen headline</label>
+                      <input id="scene-headline" value={selectedScene.headline} onChange={event => updateSelectedScene({ headline: event.target.value })} disabled={working} placeholder="Short, clear headline" />
+                    </div>
+                  </div>
+
+                  <label htmlFor="scene-narration">Narration</label>
+                  <textarea
+                    id="scene-narration"
+                    className="scene-narration"
+                    value={selectedScene.narration}
+                    onChange={event => updateSelectedScene({ narration: event.target.value })}
+                    disabled={working}
+                    placeholder="Write what the audience will hear in this scene…"
+                  />
+                  <div className="field-footnote">
+                    <span>{selectedScene.narration.trim().split(/\s+/).filter(Boolean).length} words</span>
+                    <span>Keep one clear idea per scene</span>
+                  </div>
+
+                  {cfg.visualMode === 'infographic' && (
+                    <div className="visual-direction-field">
+                      <label htmlFor="scene-visual-query">Visual direction</label>
+                      <input id="scene-visual-query" value={selectedScene.visualQuery} onChange={event => updateSelectedScene({ visualQuery: event.target.value })} disabled={working} placeholder="e.g. aerial view of a solar farm at sunrise" />
+                      <p>Describe the image to find for this part of the story.</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+            )}
+
+            <div className="scene-editor-actions">
+              <div>
+                {hasInvalidScenes && <span className="save-warning">Every scene needs narration.</span>}
+                {!hasInvalidScenes && sceneEditsChanged && <span className="unsaved-indicator">Unsaved changes</span>}
+                {!hasInvalidScenes && !sceneEditsChanged && <span className="saved-indicator"><Icon name="check" size={13} /> All changes saved</span>}
+              </div>
+              <div className="row">
+                <button className="btn-secondary" onClick={saveScenes} disabled={working || !sceneEditsChanged || hasInvalidScenes}>
+                  {busy === 'save-scenes' ? 'Saving…' : 'Save changes'}
+                </button>
+                {autoStep === 'awaiting-script' && (
+                  <button onClick={continueAfterScript} disabled={working || renderElsewhere || hasInvalidScenes}>
+                    Continue → prepare visuals
+                  </button>
+                )}
+              </div>
+            </div>
           </section>
+          )}
 
           {/* 3 — Metadata */}
-          <section className="panel">
-            <h2 className="step-title">3 · Metadata</h2>
-            {debate.metadata === null ? (
-              <>
-                <p className="review-note">YouTube title, description, hashtags, reel captions, thumbnail hook.</p>
+          {workspaceSection === 'metadata' && (
+          <section className="panel metadata-panel">
+            <div className="metadata-heading">
+              <div><span className="step-title">5 · Metadata</span><h2>Prepare your publishing details</h2><p>Review exactly what viewers will see on YouTube and Instagram.</p></div>
+              {editMetadataFields && <span className="metadata-ready"><Icon name="check" size={13} /> Generated</span>}
+            </div>
+            {!editMetadataFields ? (
+              <div className="metadata-empty">
+                <div className="sparkle"><Icon name="sparkles" size={18} /></div>
+                <strong>Generate your titles and captions</strong>
+                <p>Creates a YouTube title, description, hashtags, thumbnail hook, and three reel captions.</p>
                 <button onClick={generateMetadata} disabled={working}>
                   {busy === 'metadata' ? 'Generating…' : 'Generate metadata'}
                 </button>
-              </>
+              </div>
             ) : (
               <>
-                <textarea className="mono" rows={10} value={editMetadata}
-                          onChange={e => setEditMetadata(e.target.value)} disabled={working} />
-                <div className="row">
+                <div className="metadata-form">
+                  <section className="metadata-group">
+                    <div className="metadata-group-title"><span>YouTube</span><small>Main video details</small></div>
+                    <label htmlFor="youtube-title">Video title <span>{editMetadataFields.youtube.title.length}/70</span></label>
+                    <input id="youtube-title" maxLength={70} value={editMetadataFields.youtube.title} onChange={event => updateYoutubeMetadata('title', event.target.value)} disabled={working} />
+                    <label htmlFor="youtube-description">Description <span>{editMetadataFields.youtube.description.length}/5000</span></label>
+                    <textarea id="youtube-description" rows={7} value={editMetadataFields.youtube.description} onChange={event => updateYoutubeMetadata('description', event.target.value)} disabled={working} />
+                    <label htmlFor="youtube-hashtags">Hashtags <span>{editMetadataFields.youtube.hashtags.length}/8–12 tags</span></label>
+                    <input id="youtube-hashtags" value={editMetadataFields.youtube.hashtags.join(' ')} onChange={event => updateHashtags(event.target.value)} disabled={working} placeholder="#history #education #explainer" />
+                  </section>
+                  <section className="metadata-group">
+                    <div className="metadata-group-title"><span>Thumbnail</span><small>Short hook shown on the image</small></div>
+                    <label htmlFor="thumbnail-hook">Thumbnail hook <span>{editMetadataFields.thumbnailHook.length}/80</span></label>
+                    <input id="thumbnail-hook" maxLength={80} value={editMetadataFields.thumbnailHook} onChange={event => setEditMetadataFields(current => current ? { ...current, thumbnailHook: event.target.value } : current)} disabled={working} />
+                    <div className="thumbnail-copy-preview"><small>Preview</small><strong>{editMetadataFields.thumbnailHook || 'Your hook appears here'}</strong></div>
+                  </section>
+                  <section className="metadata-group metadata-reels-group">
+                    <div className="metadata-group-title"><span>Short-form captions</span><small>YouTube Shorts and Instagram Reels</small></div>
+                    <div className="metadata-reel-grid">
+                      {editMetadataFields.reels.map(reel => (
+                        <div key={reel.part}>
+                          <label htmlFor={`reel-caption-${reel.part}`}>Part {reel.part} <span>{reel.caption.length}/2200</span></label>
+                          <textarea id={`reel-caption-${reel.part}`} rows={5} maxLength={2200} value={reel.caption} onChange={event => updateReelCaption(reel.part, event.target.value)} disabled={working} />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+                <div className="metadata-actions">
+                  <span className={metadataInvalid ? 'save-warning' : metadataChanged ? 'unsaved-indicator' : 'saved-indicator'}>
+                    {metadataInvalid ? 'Complete all required fields' : metadataChanged ? 'Unsaved changes' : <><Icon name="check" size={13} /> All changes saved</>}
+                  </span>
+                  <div className="row">
                   <button className="btn-secondary" onClick={saveMetadata}
-                          disabled={working || editMetadata === debate.metadata}>
+                          disabled={working || !metadataChanged || metadataInvalid}>
                     {busy === 'save-metadata' ? 'Saving…' : 'Save metadata'}
                   </button>
                   <button className="btn-secondary" onClick={generateMetadata} disabled={working}>
                     {busy === 'metadata' ? 'Regenerating…' : 'Regenerate'}
                   </button>
-                  {autoStep === 'awaiting-metadata' && (
-                    <button onClick={continueAfterMetadata} disabled={working || renderElsewhere}>
-                      Continue → render video
+                  {debate.videoExists && debate.reelsCount === 3 && (
+                    <button onClick={continueAfterMetadata} disabled={working || renderElsewhere || metadataInvalid}>
+                      Save &amp; continue to publish
                     </button>
                   )}
+                  </div>
                 </div>
               </>
             )}
           </section>
+          )}
 
           {/* 4 — YouTube video */}
+          {workspaceSection === 'video' && (
           <section className="panel">
-            <h2 className="step-title">4 · YouTube video</h2>
+            <h2 className="step-title">3 · Video</h2>
 
             {options && (
               <>
@@ -892,63 +1374,9 @@ export default function Home() {
             )}
 
             {cfg.visualMode === 'infographic' && (
-              <div className="sub-action visual-scenes-section">
-                <div className="sub-head">
-                  <strong>Visual scenes</strong>
-                  {visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath) && <span className="ok-tag">ready</span>}
-                </div>
-                {!visualsConfigured ? (
-                  <p className="review-note">Add <code>PEXELS_API_KEY</code> to <code>.env</code>, then restart the app.</p>
-                ) : visualScenes.length === 0 ? (
-                  <>
-                    <p className="review-note">Creates one topic-specific stock photo for every three script lines.</p>
-                    <button onClick={generateVisuals} disabled={working || renderElsewhere}>
-                      {job?.kind === 'visuals' ? 'Finding visuals…' : 'Generate visual scenes'}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="review-note">
-                      Review each image or change its search. <a href="https://www.pexels.com" target="_blank" rel="noreferrer">Photos provided by Pexels</a>.
-                    </p>
-                    <div className="visual-grid">
-                      {visualScenes.map((scene, index) => (
-                        <article className="visual-card" key={scene.id}>
-                          {scene.imagePath
-                            ? <img src={`/api/debate/${name}/visuals/${scene.id}/image?t=${nonce}`} alt={scene.headline} />
-                            : <div className="visual-missing">{scene.error || 'No image'}</div>}
-                          <div className="visual-card-body">
-                            <strong>{index + 1}. {scene.headline}</strong>
-                            <input
-                              aria-label={`Search query for ${scene.id}`}
-                              value={scene.searchQuery}
-                              disabled={working}
-                              onChange={event => setVisualScenes(items => items.map(item => item.id === scene.id
-                                ? { ...item, searchQuery: event.target.value }
-                                : item))}
-                            />
-                            {scene.source && (
-                              <small>
-                                Photo by <a href={scene.source.photographerUrl} target="_blank" rel="noreferrer">{scene.source.photographer}</a>
-                              </small>
-                            )}
-                            <button className="btn-secondary" onClick={() => regenerateVisual(scene)} disabled={working}>
-                              {busy === `visual-${scene.id}` ? 'Replacing…' : 'Replace image'}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                    <div className="row">
-                      <button className="btn-secondary" onClick={generateVisuals} disabled={working || renderElsewhere}>
-                        Regenerate all scenes
-                      </button>
-                      {autoStep === 'awaiting-visuals' && (
-                        <button onClick={continueAfterVisuals} disabled={working || renderElsewhere || !visualsReady}>Continue → render video</button>
-                      )}
-                    </div>
-                  </>
-                )}
+              <div className="sub-action visual-summary-row">
+                <div><div className="sub-head"><strong>Storyboard pictures</strong>{visualsReady && <span className="ok-tag">ready</span>}</div><p className="review-note">Pictures are reviewed alongside the narration in Storyboard.</p></div>
+                <button type="button" className="btn-secondary compact" onClick={() => setWorkspaceSection('storyboard')}>Open storyboard</button>
               </div>
             )}
 
@@ -1001,10 +1429,12 @@ export default function Home() {
               )}
             </div>
           </section>
+          )}
 
           {/* 5 — Reels */}
+          {workspaceSection === 'shorts' && (
           <section className="panel">
-            <h2 className="step-title">5 · Reels</h2>
+            <h2 className="step-title">4 · Shorts</h2>
             {!debate.audioExists ? (
               <p className="review-note">Generate the audio first — reels reuse it.</p>
             ) : editReels.length === 0 ? (
@@ -1046,8 +1476,10 @@ export default function Home() {
               </>
             )}
           </section>
+          )}
 
           {/* 6 — Publish */}
+          {workspaceSection === 'publish' && (
           <section className="panel">
             <h2 className="step-title">6 · Publish</h2>
             <p className="review-note">1 main video + 3 Shorts → YouTube · 3 Reels → Instagram</p>
@@ -1088,6 +1520,7 @@ export default function Home() {
               </button>
             </div>
           </section>
+          )}
         </>
       )}
       </div>
