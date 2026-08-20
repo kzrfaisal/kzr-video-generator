@@ -16,7 +16,7 @@ import { GeneratedVisualPlanSchema } from '@/src/services/openai/schemas';
 import { generateStructured } from '@/src/services/openai/structuredOutput';
 import { VISUAL_PROMPT_VERSION, visualDeveloperPrompt, visualUserPrompt } from '@/src/services/openai/prompts';
 
-const LINES_PER_SCENE = 3;
+type VisualPacing = 'relaxed' | 'balanced' | 'detailed';
 
 export interface VisualSource {
   provider: 'pexels';
@@ -67,10 +67,10 @@ interface PexelsPhoto {
   src: { original: string; landscape?: string; large2x?: string; large?: string };
 }
 
-function groupLines(lines: DebateLine[], sceneIds: string[]): SceneGroup[] {
+function groupLines(lines: DebateLine[], sceneIds: string[], linesPerVisual: number): SceneGroup[] {
   const groups: SceneGroup[] = [];
-  for (let start = 0; start < lines.length; start += LINES_PER_SCENE) {
-    const slice = lines.slice(start, start + LINES_PER_SCENE);
+  for (let start = 0; start < lines.length; start += linesPerVisual) {
+    const slice = lines.slice(start, start + linesPerVisual);
     const scriptSceneIds = slice.map((_, offset) => sceneIds[start + offset]).filter(Boolean);
     groups.push({
       id: scriptSceneIds[0] ? `visual-${scriptSceneIds[0]}` : `scene-${String(groups.length + 1).padStart(2, '0')}`,
@@ -241,7 +241,10 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
   const project = readProjectDocument(debateName);
   const narrated = readContentMode(debateName) === 'narrated-explainer';
   const lines = scenesToDialogue(project.scenes);
-  const groups = groupLines(lines, project.scenes.map(scene => scene.id));
+  const savedPacing = project.config.visualPacing;
+  const pacing: VisualPacing = savedPacing === 'relaxed' || savedPacing === 'detailed' ? savedPacing : 'balanced';
+  const linesPerVisual = pacing === 'relaxed' ? 3 : pacing === 'detailed' ? 1 : 2;
+  const groups = groupLines(lines, project.scenes.map(scene => scene.id), linesPerVisual);
   let copy: Array<{ headline: string; searchQuery: string }>;
   let visualResponseId: string | null = null;
   try {

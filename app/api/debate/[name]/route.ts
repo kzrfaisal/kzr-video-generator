@@ -4,7 +4,7 @@ import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/shared/filesystem/paths';
 import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
-import { metadataToMarkdown } from '@/src/domain/projects/metadata';
+import { metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { readPipelineState } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
@@ -25,6 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   const metadata = fs.existsSync(mdPath)
     ? fs.readFileSync(mdPath, 'utf-8')
     : project.metadata ? metadataToMarkdown(project.metadata) : null;
+  const metadataFields = project.metadata ?? (metadata ? parseMetadataMarkdown(metadata) : null);
   let publishing = null;
   const publishPath = publishRecordPath(name);
   if (fs.existsSync(publishPath)) {
@@ -46,6 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     script,
     scenes: project.scenes,
     metadata,
+    metadataFields,
     config: project.config,
     thumbnailExists: hasThumbnail(name),
     audioExists: hasAudio(name),

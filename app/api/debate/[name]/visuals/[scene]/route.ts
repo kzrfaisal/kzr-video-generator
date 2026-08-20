@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 
 export async function POST(req: Request, { params }: { params: Promise<{ name: string; scene: string }> }) {
   const { name, scene } = await params;
-  if (!isValidDebateName(name) || !/^scene-\d{2,3}$/.test(scene)) {
+  if (!isValidDebateName(name) || !/^(?:visual-)?scene-\d{2,}$/.test(scene)) {
     return NextResponse.json({ error: 'Invalid visual scene.' }, { status: 400 });
   }
   const body = await req.json().catch(() => ({}));

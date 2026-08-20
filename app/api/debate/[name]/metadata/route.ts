@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { projectPath, publishDir, publishMetadata } from '@/src/shared/filesystem/paths';
-import { parseMetadataMarkdown } from '@/src/domain/projects/metadata';
+import { metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
+import { GeneratedMetadataSchema } from '@/src/services/openai/schemas';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import {
   invalidateProjectStages,
@@ -36,7 +37,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
 
   markStageCompleted(name, 'metadata');
   invalidateProjectStages(name, ['thumbnail', 'publishing'], 'Metadata changed.');
-  return NextResponse.json({ metadata: fs.readFileSync(mdPath, 'utf-8') });
+  const metadata = fs.readFileSync(mdPath, 'utf-8');
+  return NextResponse.json({ metadata, metadataFields: readProjectDocument(name).metadata });
 }
 
 // PUT /api/debate/<name>/metadata — save the edited metadata back to disk.
@@ -46,16 +48,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
     return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
   }
   const body = await req.json().catch(() => ({}));
-  const metadata = typeof body.metadata === 'string' ? body.metadata : '';
   try {
     const project = readProjectDocument(name);
-    project.metadata = parseMetadataMarkdown(metadata);
+    const metadataFields = body.metadataFields
+      ? GeneratedMetadataSchema.parse(body.metadataFields)
+      : parseMetadataMarkdown(typeof body.metadata === 'string' ? body.metadata : '');
+    const metadata = metadataToMarkdown(metadataFields);
+    project.metadata = metadataFields;
     saveProjectDocument(project);
     fs.mkdirSync(publishDir(name), { recursive: true });
     fs.writeFileSync(publishMetadata(name), metadata, 'utf-8');
     markStageCompleted(name, 'metadata');
     invalidateProjectStages(name, ['thumbnail', 'publishing'], 'Metadata changed.');
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, metadata, metadataFields });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Invalid metadata.' },
