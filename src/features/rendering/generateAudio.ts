@@ -2,17 +2,51 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
+import { createHash } from 'crypto';
 import { ensureDir, parseDebateFile } from '@/src/shared/utils';
 import { config } from '@/config';
+import { buildRenderCaptions } from '@/src/domain/projects/captions';
+import { audioManifestPath } from './videoFiles';
 
-const client = new OpenAI();
+let client: OpenAI | null = null;
+
+function openAIClient(): OpenAI {
+  return client ?? (client = new OpenAI());
+}
 
 const TTS_COST_PER_CHAR = 15 / 1_000_000;
+
+function renderCaptions(debateName: string) {
+  return buildRenderCaptions(parseDebateFile(`output/debates/${debateName}.txt`));
+}
+
+function audioSignature(debateName: string): string {
+  return createHash('sha256').update(JSON.stringify({
+    captions: renderCaptions(debateName),
+    voices: config.voices,
+    model: config.ttsModel,
+    speed: config.ttsSpeed,
+  })).digest('hex');
+}
+
+export function audioIsCurrent(debateName: string): boolean {
+  const outputDir = `output/audios/${debateName}`;
+  const manifestPath = audioManifestPath(debateName);
+  if (!fs.existsSync(manifestPath)) return false;
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as { signature?: string };
+    const mp3Count = fs.readdirSync(outputDir).filter(file => file.endsWith('.mp3')).length;
+    return manifest.signature === audioSignature(debateName)
+      && mp3Count === renderCaptions(debateName).length;
+  } catch {
+    return false;
+  }
+}
 
 async function generateTts(text: string, mp3File: string, voice: string, attempt = 1): Promise<void> {
   const MAX_ATTEMPTS = 4;
   try {
-    const response = await client.audio.speech.create({
+    const response = await openAIClient().audio.speech.create({
       model: config.ttsModel as 'tts-1' | 'tts-1-hd',
       voice: voice as 'alloy' | 'echo' | 'ash' | 'onyx',
       input: text,
@@ -40,9 +74,10 @@ export async function run(debateName: string): Promise<{ characters: number; aud
 
   ensureDir('output');
   ensureDir('output/audios');
+  fs.rmSync(outputDir, { recursive: true, force: true });
   ensureDir(outputDir);
 
-  const lines = parseDebateFile(`output/debates/${debateName}.txt`);
+  const lines = renderCaptions(debateName);
   let counter = 1;
   let totalChars = 0;
 
@@ -57,6 +92,10 @@ export async function run(debateName: string): Promise<{ characters: number; aud
   }
 
   console.log('All audio generated successfully.');
+  fs.writeFileSync(audioManifestPath(debateName), JSON.stringify({
+    signature: audioSignature(debateName),
+    segments: lines.length,
+  }, null, 2));
 
   const audioCost = totalChars * TTS_COST_PER_CHAR;
   return { characters: totalChars, audioCost };

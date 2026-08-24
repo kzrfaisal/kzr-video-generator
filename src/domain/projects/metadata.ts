@@ -1,5 +1,22 @@
 import type { ProjectMetadata } from './types';
 
+/** Keep the creator's project title authoritative across publishing metadata. */
+export function applyExactProjectTitle(metadata: ProjectMetadata, projectTitle: string): ProjectMetadata {
+  const title = projectTitle.trim();
+  return {
+    ...metadata,
+    youtube: { ...metadata.youtube, title },
+    reels: metadata.reels.map(reel => {
+      const lines = reel.caption.trim().split('\n');
+      const bodyLines = /^Part\s+\d+\s*[-—]/i.test(lines[0] ?? '') ? lines.slice(1) : lines;
+      return {
+        ...reel,
+        caption: [`Part ${reel.part} - ${title}`, ...bodyLines].filter(Boolean).join('\n'),
+      };
+    }),
+  };
+}
+
 export function metadataSection(markdown: string, heading: string): string {
   const marker = `## ${heading}`;
   const start = markdown.indexOf(marker);

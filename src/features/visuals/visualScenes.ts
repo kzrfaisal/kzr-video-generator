@@ -200,6 +200,50 @@ function savePlan(plan: VisualPlan): void {
   fs.writeFileSync(visualCreditsPath(plan.debateName), credits.join('\n'), 'utf-8');
 }
 
+export interface VisualSceneRangeUpdate {
+  id: string;
+  lineStart: number;
+  lineEnd: number;
+}
+
+/** Save a complete, contiguous picture-to-subtitle mapping. */
+export function updateVisualSceneRanges(debateName: string, updates: VisualSceneRangeUpdate[]): VisualPlan {
+  const plan = readVisualPlan(debateName);
+  if (!plan) throw new Error('Generate pictures before editing their timing.');
+  if (updates.length !== plan.scenes.length) throw new Error('Every picture needs a timing range.');
+
+  const project = readProjectDocument(debateName);
+  const updateById = new Map(updates.map(update => [update.id, update]));
+  const ranges = plan.scenes.map(scene => {
+    const update = updateById.get(scene.id);
+    if (!update || !Number.isInteger(update.lineStart) || !Number.isInteger(update.lineEnd)) {
+      throw new Error(`Invalid timing for ${scene.id}.`);
+    }
+    return update;
+  });
+  ranges.forEach((range, index) => {
+    const expectedStart = index === 0 ? 0 : ranges[index - 1].lineEnd + 1;
+    if (range.lineStart !== expectedStart || range.lineEnd < range.lineStart) {
+      throw new Error('Picture timing must cover every subtitle once, without gaps or overlaps.');
+    }
+  });
+  if (ranges.at(-1)?.lineEnd !== project.scenes.length - 1) {
+    throw new Error('Picture timing must include the final subtitle.');
+  }
+
+  plan.scenes = plan.scenes.map((scene, index) => ({
+    ...scene,
+    lineStart: ranges[index].lineStart,
+    lineEnd: ranges[index].lineEnd,
+    scriptSceneIds: project.scenes
+      .slice(ranges[index].lineStart, ranges[index].lineEnd + 1)
+      .map(item => item.id),
+  }));
+  savePlan(plan);
+  syncPlanToProject(plan);
+  return plan;
+}
+
 function syncPlanToProject(plan: VisualPlan): void {
   const project = readProjectDocument(plan.debateName);
   for (const visual of plan.scenes) {
@@ -213,7 +257,6 @@ function syncPlanToProject(plan: VisualPlan): void {
       if (visual.headline) overlays.push({ id: overlayId, type: 'headline', text: visual.headline });
       return {
         ...scene,
-        headline: visual.headline,
         visualQuery: visual.searchQuery,
         visualType: 'stock-photo',
         visualAssetPath: visual.imagePath ?? null,
@@ -276,7 +319,7 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
       lineStart: group.lineStart,
       lineEnd: group.lineEnd,
       speaker: group.speaker,
-      headline: copy[index].headline,
+      headline: project.scenes[group.lineStart]?.headline.trim() || copy[index].headline,
       searchQuery: copy[index].searchQuery,
       selectionIndex: 0,
     })),

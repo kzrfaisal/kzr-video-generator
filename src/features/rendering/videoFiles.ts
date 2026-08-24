@@ -14,7 +14,20 @@ export function hasThumbnail(name: string): boolean {
 /** Whether per-line audio has been generated. */
 export function hasAudio(name: string): boolean {
   const dir = `output/audios/${name}`;
-  return fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.endsWith('.mp3'));
+  return fs.existsSync(audioManifestPath(name))
+    && fs.existsSync(dir)
+    && fs.readdirSync(dir).some(f => f.endsWith('.mp3'));
+}
+
+export function audioManifestPath(name: string): string {
+  return path.join(`output/audios/${name}`, 'manifest.json');
+}
+
+export function invalidateAudioManifest(name: string): void {
+  try { fs.unlinkSync(audioManifestPath(name)); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 
 /** Newest main (landscape) video, or null if none rendered yet. */

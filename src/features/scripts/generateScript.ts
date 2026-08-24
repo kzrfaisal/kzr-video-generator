@@ -5,15 +5,93 @@ import { config } from '@/config';
 import { generateMetadata, MetadataResult } from './generateMetadata';
 import type { ContentMode } from '@/src/features/projects/contentMode';
 import { createProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
-import { GeneratedScriptSchema } from '@/src/services/openai/schemas';
+import { GeneratedScriptSchema, type GeneratedScript } from '@/src/services/openai/schemas';
 import { generateStructured } from '@/src/services/openai/structuredOutput';
 import { SCRIPT_PROMPT_VERSION, scriptDeveloperPrompt, scriptUserPrompt } from '@/src/services/openai/prompts';
 import type { ScriptScene, SpeakerRole } from '@/src/domain/projects/types';
+import { splitCaptionText } from '@/src/domain/projects/captions';
 
 const SCRIPT_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
 const SCRIPT_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
 
 const EMPTY_METADATA: MetadataResult = { promptTokens: 0, completionTokens: 0, cost: 0 };
+
+export interface ScriptPreferences {
+  outputType?: 'youtube' | 'short';
+  videoLengthMinutes?: number;
+  extractReels?: boolean;
+}
+
+function generationTargets(preferences: ScriptPreferences): {
+  scenes: number;
+  subtitles: number;
+  minimumWords: number;
+  maximumWords: number;
+  targetWords: number;
+  minimumWordsPerSubtitle: number;
+  maximumWordsPerSubtitle: number;
+} {
+  const minutes = Math.max(0.25, preferences.videoLengthMinutes ?? 3);
+  const scenes = preferences.outputType === 'short'
+    ? 2
+    : Math.max(2, Math.min(8, Math.round(minutes / 0.65)));
+  const minimumWords = Math.round(minutes * 125);
+  const maximumWords = Math.round(minutes * 155);
+  const targetWords = Math.round(minutes * 140);
+  const subtitles = Math.max(scenes * 2, Math.min(scenes * 6, Math.round(targetWords / 14)));
+  return {
+    scenes,
+    subtitles,
+    minimumWords,
+    maximumWords,
+    targetWords,
+    minimumWordsPerSubtitle: Math.max(8, Math.floor(minimumWords / subtitles)),
+    maximumWordsPerSubtitle: Math.max(12, Math.ceil(maximumWords / subtitles)),
+  };
+}
+
+function generatedWordCount(script: GeneratedScript): number {
+  return script.sections.reduce((total, section) => total + section.subtitles.reduce(
+    (sectionTotal, subtitle) => sectionTotal + subtitle.narration.trim().split(/\s+/).filter(Boolean).length,
+    0,
+  ), 0);
+}
+
+function mergeSectionPair(
+  sections: GeneratedScript['sections'],
+  index: number,
+): GeneratedScript['sections'] {
+  const first = sections[index];
+  const second = sections[index + 1];
+  return [
+    ...sections.slice(0, index),
+    {
+      title: first.title || second.title,
+      subtitles: [...first.subtitles, ...second.subtitles],
+    },
+    ...sections.slice(index + 2),
+  ];
+}
+
+/** Keep generated scenes editorially useful instead of accepting one tiny scene per beat. */
+function balanceGeneratedSections(
+  sections: GeneratedScript['sections'],
+  targetSceneCount: number,
+): GeneratedScript['sections'] {
+  let balanced = sections.map(section => ({ ...section, subtitles: [...section.subtitles] }));
+  while (balanced.length > targetSceneCount) {
+    const candidates = balanced.slice(0, -1)
+      .map((section, index) => ({ index, size: section.subtitles.length + balanced[index + 1].subtitles.length }))
+      .filter(candidate => candidate.size <= 6)
+      .sort((a, b) => a.size - b.size);
+    if (candidates.length === 0) break;
+    balanced = mergeSectionPair(balanced, candidates[0].index);
+  }
+  if (balanced.length > 1 && balanced.every(section => section.subtitles.length === 2)) {
+    balanced = mergeSectionPair(balanced, 0);
+  }
+  return balanced;
+}
 
 async function generateMetadataIfEnabled(
   topic: string,
@@ -31,7 +109,12 @@ async function generateMetadataIfEnabled(
   }
 }
 
-export async function run(topic: string, context: string = '', contentMode: ContentMode = 'debate'): Promise<{
+export async function run(
+  topic: string,
+  context: string = '',
+  contentMode: ContentMode = 'debate',
+  preferences: ScriptPreferences = {},
+): Promise<{
   debateName: string;
   promptTokens: number;
   completionTokens: number;
@@ -39,33 +122,93 @@ export async function run(topic: string, context: string = '', contentMode: Cont
   metadata: MetadataResult;
 }> {
   ensureDir('output/debates');
-  const generated = await generateStructured({
+  const targets = generationTargets(preferences);
+  const promptInput = (validationFeedback?: string, previousDraft?: GeneratedScript) => scriptUserPrompt({
+      title: topic,
+      context,
+      contentMode,
+      videoLengthTarget: preferences.videoLengthMinutes
+        ? `${preferences.videoLengthMinutes} minutes`
+        : config.videoLengthTarget,
+      sceneCountTarget: targets.scenes,
+      subtitleCountTarget: targets.subtitles,
+      wordCountMinimum: targets.minimumWords,
+      wordCountMaximum: targets.maximumWords,
+      wordCountTarget: targets.targetWords,
+      wordsPerSubtitleMinimum: targets.minimumWordsPerSubtitle,
+      wordsPerSubtitleMaximum: targets.maximumWordsPerSubtitle,
+      validationFeedback,
+      previousDraft,
+    });
+  let generated = await generateStructured({
     model: config.scriptModel,
     schema: GeneratedScriptSchema,
     schemaName: 'video_script',
     developerPrompt: scriptDeveloperPrompt(contentMode, config.isReelStyle),
-    userPrompt: scriptUserPrompt({
-      title: topic,
-      context,
-      contentMode,
-      videoLengthTarget: config.videoLengthTarget,
-    }),
+    userPrompt: promptInput(),
     label: 'script generation',
   });
+  let inputTokens = generated.usage.inputTokens;
+  let outputTokens = generated.usage.outputTokens;
+  let bestGenerated = generated;
+  let bestDistance = Math.abs(generatedWordCount(generated.data) - targets.targetWords);
+  for (let attempt = 1; attempt < 3; attempt++) {
+    const actualWords = generatedWordCount(generated.data);
+    if (actualWords >= targets.minimumWords && actualWords <= targets.maximumWords) break;
+    generated = await generateStructured({
+      model: config.scriptModel,
+      schema: GeneratedScriptSchema,
+      schemaName: 'video_script',
+      developerPrompt: scriptDeveloperPrompt(contentMode, config.isReelStyle),
+      userPrompt: promptInput(
+        `The supplied draft contains ${actualWords} words. Expand and rewrite it to exactly ${targets.scenes} scenes and ${targets.subtitles} subtitles, targeting ${targets.targetWords} total narration words. Preserve its useful facts and improve the explanation without repetition.`,
+        generated.data,
+      ),
+      label: `script duration correction ${attempt}`,
+    });
+    inputTokens += generated.usage.inputTokens;
+    outputTokens += generated.usage.outputTokens;
+    const distance = Math.abs(generatedWordCount(generated.data) - targets.targetWords);
+    if (distance < bestDistance) {
+      bestGenerated = generated;
+      bestDistance = distance;
+    }
+  }
+  generated = bestGenerated;
+  const finalWordCount = generatedWordCount(generated.data);
+  if (finalWordCount < targets.minimumWords || finalWordCount > targets.maximumWords) {
+    console.warn(`Script length is approximate: generated ${finalWordCount} words for a ${targets.targetWords}-word target.`);
+  }
 
-  if (contentMode === 'narrated-explainer' && generated.data.scenes.some(scene => scene.speaker !== 'HOST')) {
-    throw new Error('Structured explainer output contained a non-HOST speaker.');
+  const generatedSections = balanceGeneratedSections(generated.data.sections, targets.scenes)
+    .map(section => ({
+      ...section,
+      subtitles: section.subtitles.flatMap(subtitle =>
+        splitCaptionText(subtitle.narration).map(narration => ({ ...subtitle, narration })),
+      ),
+    }));
+  const generatedSubtitles = generatedSections.flatMap((section, sectionIndex) =>
+    section.subtitles.map(subtitle => ({
+      ...subtitle,
+      sectionId: `section-${String(sectionIndex + 1).padStart(3, '0')}`,
+      headline: section.title,
+    })),
+  );
+
+  if (contentMode === 'narrated-explainer' && generatedSubtitles.some(scene => scene.speaker !== 'HOST')) {
+    console.warn('Explainer output contained a non-HOST speaker; it was normalized automatically.');
   }
   if (contentMode === 'debate') {
-    const speakers = new Set(generated.data.scenes.map(scene => scene.speaker));
+    const speakers = new Set(generatedSubtitles.map(scene => scene.speaker));
     if (!speakers.has('HOST') || !speakers.has('A') || !speakers.has('B')) {
-      throw new Error('Structured debate output must contain HOST, A, and B scenes.');
+      console.warn('Debate output did not use every speaker role; saving the generated draft for review.');
     }
   }
 
-  const scenes: ScriptScene[] = generated.data.scenes.map((scene, index) => ({
+  const scenes: ScriptScene[] = generatedSubtitles.map((scene, index) => ({
     id: `scene-${String(index + 1).padStart(3, '0')}`,
-    speaker: scene.speaker as SpeakerRole,
+    sectionId: scene.sectionId,
+    speaker: (contentMode === 'narrated-explainer' ? 'HOST' : scene.speaker) as SpeakerRole,
     narration: scene.narration.trim(),
     headline: scene.headline.trim(),
     visualQuery: scene.visualQuery.trim(),
@@ -94,6 +237,7 @@ export async function run(topic: string, context: string = '', contentMode: Cont
     script: content,
     config: {
       contentMode,
+      ...preferences,
       generation: {
         scriptPromptVersion: SCRIPT_PROMPT_VERSION,
         scriptResponseId: generated.responseId,
@@ -107,12 +251,11 @@ export async function run(topic: string, context: string = '', contentMode: Cont
 
   const metadata = await generateMetadataIfEnabled(topic, context, content, debateName, contentMode);
 
-  const usage = generated.usage;
   const scriptCost =
-    usage.inputTokens * SCRIPT_INPUT_COST_PER_TOKEN +
-    usage.outputTokens * SCRIPT_OUTPUT_COST_PER_TOKEN;
+    inputTokens * SCRIPT_INPUT_COST_PER_TOKEN +
+    outputTokens * SCRIPT_OUTPUT_COST_PER_TOKEN;
 
-  return { debateName, promptTokens: usage.inputTokens, completionTokens: usage.outputTokens, scriptCost, metadata };
+  return { debateName, promptTokens: inputTokens, completionTokens: outputTokens, scriptCost, metadata };
 }
 
 if (require.main === module) {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { parseMetadataMarkdown } from './metadata';
+import { applyExactProjectTitle, parseMetadataMarkdown } from './metadata';
 import { reconcileScenes, scriptToLegacyText } from './script';
 import { migrateProjectDocument, readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
@@ -55,6 +55,20 @@ Closing`);
   assert.deepEqual(metadata.youtube.hashtags, ['#history', '#learning']);
   assert.equal(metadata.reels[2].caption, 'Closing');
   assert.equal(metadata.thumbnailHook, 'THE KEY IDEA');
+});
+
+test('keeps the creator project title in publishing metadata and reel prefixes', () => {
+  const result = applyExactProjectTitle({
+    youtube: { title: 'Invented title', description: 'Description', hashtags: ['#video'] },
+    reels: [1, 2, 3].map(part => ({
+      part: part as 1 | 2 | 3,
+      caption: `Part ${part} - Invented title\nUseful caption ${part}`,
+    })),
+    thumbnailHook: 'A hook',
+  }, 'My Exact Video Title');
+  assert.equal(result.youtube.title, 'My Exact Video Title');
+  assert.ok(result.reels.every(reel => reel.caption.startsWith(`Part ${reel.part} - My Exact Video Title\n`)));
+  assert.ok(result.reels.every(reel => !reel.caption.includes('Invented title')));
 });
 
 test('loads a legacy project and explicitly migrates it to the versioned schema', () => {

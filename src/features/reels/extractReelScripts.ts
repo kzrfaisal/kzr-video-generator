@@ -57,6 +57,30 @@ function blocksToScript(blocks: Block[]): string {
     .join('\n\n') + '\n';
 }
 
+function balancedDebateParts(debateName: string, lines: DebateLine[], contentMode: ContentMode): ExtractedPart[] {
+  if (lines.length < 3) throw new Error('The debate needs at least three subtitle lines to create reels.');
+  const cuts = [0, Math.round(lines.length / 3), Math.round(lines.length * 2 / 3), lines.length];
+  const reelsDir = 'output/debates/reels';
+  ensureDir(reelsDir);
+  return ([0, 1, 2] as const).map(partIndex => {
+    const start = cuts[partIndex];
+    const end = cuts[partIndex + 1];
+    const selected = lines.slice(start, end);
+    const name = `${debateName}_part${partIndex + 1}`;
+    const filePath = `${reelsDir}/${name}.txt`;
+    const script = selected.map(line => `${line.speaker}|${line.text}`).join('\n')
+      + `\n\nHOST|${outroText(partIndex, contentMode)}\n`;
+    fs.writeFileSync(filePath, script, 'utf-8');
+    console.log(`Wrote: ${filePath}`);
+    return {
+      name,
+      filePath,
+      origLineIndices: selected.map((_, index) => start + index),
+      contentMode,
+    };
+  });
+}
+
 /**
  * Split a long-form debate into 3 reel-sized parts based on the prompt's
  * HOST-A-HOST-B-HOST-A-HOST-B-HOST-A-HOST-B-[HOST] structure:
@@ -81,17 +105,13 @@ export function extract(debateName: string): ExtractedPart[] {
 
   const expected = ['HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B'];
   if (blocks.length < expected.length) {
-    throw new Error(
-      `Expected at least ${expected.length} speaker blocks following HOST-A-HOST-B rounds, got ${blocks.length}. ` +
-      `The script doesn't match the long-form debate structure — extract manually.`
-    );
+    console.warn(`Debate has ${blocks.length} speaker blocks; creating three balanced reels instead.`);
+    return balancedDebateParts(debateName, lines, contentMode);
   }
   for (let i = 0; i < expected.length; i++) {
     if (blocks[i].speaker !== expected[i]) {
-      throw new Error(
-        `Block ${i} is ${blocks[i].speaker}, expected ${expected[i]}. ` +
-        `The script doesn't match the long-form debate structure — extract manually.`
-      );
+      console.warn(`Debate speaker pattern differs at block ${i}; creating three balanced reels instead.`);
+      return balancedDebateParts(debateName, lines, contentMode);
     }
   }
 

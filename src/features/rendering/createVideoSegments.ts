@@ -6,6 +6,7 @@ import { config, STYLES, SubtitleStyle } from '@/config';
 import { publishMetadata } from '@/src/shared/filesystem/paths';
 import { createInfographicOverlay } from '@/src/features/visuals/infographic';
 import { visualSceneForLine } from '@/src/features/visuals/visualScenes';
+import { buildRenderCaptions } from '@/src/domain/projects/captions';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -58,7 +59,7 @@ function reelPartBanner(debateName: string): string {
   return `Part ${partNum} - ${title}`;
 }
 
-function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle, startPadSec: number): string {
+function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: number, style: SubtitleStyle, startPadSec: number, endSec: number): string {
   const opts: string[] = [
     `fontfile=${path.resolve(style.font ?? config.font)}`,
     `textfile=${filePath}`,
@@ -76,20 +77,21 @@ function buildDrawtextFilter(filePath: string, lineIndex: number, lineCount: num
   if (style.box        !== undefined) opts.push(`box=${style.box}`);
   if (style.boxcolor   !== undefined) opts.push(`boxcolor=${style.boxcolor}`);
   if (style.boxborderw !== undefined) opts.push(`boxborderw=${style.boxborderw}`);
-  // Hide subtitle during the leading silence so it appears in sync with speech,
-  // not 1s early during the crossfade window. Escape the comma in gte(t,...)
-  // so ffmpeg doesn't interpret it as a filter-chain separator.
-  if (startPadSec > 0) opts.push(`enable=gte(t\\,${startPadSec})`);
+  // A caption exists only for its matching audio window. Escaped commas keep the
+  // between() expression inside drawtext instead of becoming filter separators.
+  opts.push(`enable=between(t\\,${startPadSec.toFixed(3)}\\,${endSec.toFixed(3)})`);
   return `drawtext=${opts.join(':')}`;
 }
 
-function buildAudioFilter(startPadSec: number, endPadSec: number): string {
+function buildAudioFilter(startPadSec: number, endPadSec: number, segmentDurationSec: number): string {
   const filters: string[] = [];
   if (startPadSec > 0) {
     const ms = Math.round(startPadSec * 1000);
     filters.push(`adelay=delays=${ms}:all=1`);
   }
   filters.push(`apad=pad_dur=${endPadSec}`);
+  filters.push(`atrim=duration=${segmentDurationSec.toFixed(6)}`);
+  filters.push('asetpts=PTS-STARTPTS');
   return filters.join(',');
 }
 
@@ -138,16 +140,19 @@ export function createSegment(
   photoMode = false,
   sceneHeadline?: string,
   motionOffsetSec = 0,
+  speechDurationSec = audioDuration(audio),
 ): void {
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
+  const segmentDurationSec = startPadSec + speechDurationSec + endPadSec;
+  const subtitleEndSec = startPadSec + speechDurationSec;
 
   const outputBase = outputPath.replace(/\.[^.]+$/, '');
-  const textFiles = wrapped.map((line, i) => {
+  const textFiles = config.subtitlesEnabled ? wrapped.map((line, i) => {
     const filePath = path.resolve(`${outputBase}_line${i}.txt`);
     fs.writeFileSync(filePath, line, 'utf-8');
     return filePath;
-  });
+  }) : [];
 
   const allFilters: string[] = [
     photoMode
@@ -167,6 +172,7 @@ export function createSegment(
       ? createInfographicOverlay(
         debateName, speaker, text, config.isReelStyle,
         outputBase, config.bannerFont.font, photoMode, sceneHeadline,
+        config.sceneTitlesEnabled,
       )
     : { filters: [], tempFiles: [] };
   allFilters.push(...infographic.filters);
@@ -192,7 +198,7 @@ export function createSegment(
   }
 
   // Lower-third bar sits behind the text
-  if (style.lowerThirdBar) {
+  if (config.subtitlesEnabled && style.lowerThirdBar) {
     const { color, padding } = style.lowerThirdBar;
     const lh = style.lineHeight ?? config.subtitleLineHeight;
     const barHeight = wrapped.length * lh + padding * 2;
@@ -201,7 +207,7 @@ export function createSegment(
   }
 
   textFiles.forEach((filePath, i) => {
-    allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style, startPadSec));
+    allFilters.push(buildDrawtextFilter(filePath, i, wrapped.length, style, startPadSec, subtitleEndSec));
   });
 
   // Persistent "Part N - <title>" banner, vertically centered, drawn on every frame.
@@ -226,6 +232,10 @@ export function createSegment(
     });
   }
 
+  // Give the video and audio streams the exact same segment boundary. This prevents
+  // cumulative timestamp drift when dozens of caption segments are concatenated.
+  allFilters.push(`trim=duration=${segmentDurationSec.toFixed(6)}`, 'setpts=PTS-STARTPTS');
+
   // PCM audio in .mkv → sample-accurate durations, so the xfade chain in buildVideo
   // doesn't accumulate AAC frame-quantization drift across segments.
   const isFadePcm = config.transitionStyle === 'fade-pcm';
@@ -236,8 +246,9 @@ export function createSegment(
     '-i', image,
     '-i', audio,
     '-vf', allFilters.join(','),
-    '-af', buildAudioFilter(startPadSec, endPadSec),
+    '-af', buildAudioFilter(startPadSec, endPadSec, segmentDurationSec),
     '-shortest',
+    '-t', segmentDurationSec.toFixed(6),
     '-r', String(config.fps),
     '-c:v', 'libx264',
     '-crf', String(config.videoCrf),
@@ -259,6 +270,7 @@ export function run(debateName: string): void {
 
   ensureDir('tmp');
   ensureDir('tmp/video_segments');
+  fs.rmSync(segmentsDir, { recursive: true, force: true });
   ensureDir(segmentsDir);
 
   if (!fs.existsSync(audioDir)) {
@@ -268,7 +280,7 @@ export function run(debateName: string): void {
   const files = fs.readdirSync(audioDir).filter((f: string) => f.endsWith('.mp3')).sort();
   if (files.length === 0) throw new Error(`No audio files found in ${audioDir}`);
 
-  const lines = parseDebateFile(`output/debates/${debateName}.txt`);
+  const lines = buildRenderCaptions(parseDebateFile(`output/debates/${debateName}.txt`));
   const bannerText = reelPartBanner(debateName);
 
   const speakerOf = (f: string) => f.split('_')[1].split('.')[0];
@@ -291,7 +303,9 @@ export function run(debateName: string): void {
 
     const text = lines[idx].text;
     const { styleName, image } = resolveStyleAndImage(speaker);
-    const plannedScene = config.visualMode === 'infographic' ? visualSceneForLine(debateName, idx) : null;
+    const plannedScene = config.visualMode === 'infographic'
+      ? visualSceneForLine(debateName, lines[idx].sourceLineIndex)
+      : null;
     const hasScenePhoto = !!plannedScene?.imagePath && fs.existsSync(plannedScene.imagePath);
     const sceneImage = hasScenePhoto
       ? plannedScene!.imagePath!
@@ -302,12 +316,13 @@ export function run(debateName: string): void {
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
     const sceneKey = plannedScene?.id ?? `line-${idx}`;
     const motionOffsetSec = sceneElapsed.get(sceneKey) ?? 0;
+    const speechDurationSec = audioDuration(audioPath);
 
     console.log(`Creating segment for ${file}`);
     createSegment(
       speaker, debateName, idx, files.length, sceneImage, audioPath, text,
       segmentPath, styleName, startPadSec, endPadSec, bannerText,
-      hasScenePhoto, plannedScene?.headline, motionOffsetSec,
+      hasScenePhoto, plannedScene?.headline, motionOffsetSec, speechDurationSec,
     );
     // xfade overlaps the outgoing and incoming clips. Move the next clip's
     // camera clock back by that overlap so the photo stays pixel-aligned while
@@ -315,7 +330,7 @@ export function run(debateName: string): void {
     const overlapToNext = fadeEnabled && nextSpeaker !== null && nextSpeaker !== speaker ? D : 0;
     sceneElapsed.set(
       sceneKey,
-      motionOffsetSec + startPadSec + audioDuration(audioPath) + endPadSec - overlapToNext,
+      motionOffsetSec + startPadSec + speechDurationSec + endPadSec - overlapToNext,
     );
   });
 }

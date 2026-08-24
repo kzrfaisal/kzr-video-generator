@@ -4,7 +4,7 @@ import { config } from '@/config';
 import { ensureDir } from '@/src/shared/utils';
 import { publishDir, publishMetadata } from '@/src/shared/filesystem/paths';
 import type { ContentMode } from '@/src/features/projects/contentMode';
-import { metadataToMarkdown } from '@/src/domain/projects/metadata';
+import { applyExactProjectTitle, metadataToMarkdown } from '@/src/domain/projects/metadata';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import { GeneratedMetadataSchema } from '@/src/services/openai/schemas';
 import { generateStructured } from '@/src/services/openai/structuredOutput';
@@ -43,7 +43,7 @@ export async function generateMetadata(
   if (parts.some((reel, index) => reel.part !== index + 1)) {
     throw new Error('Structured metadata must contain unique reel parts 1, 2, and 3.');
   }
-  const structuredMetadata = { ...generated.data, reels: parts };
+  const structuredMetadata = applyExactProjectTitle({ ...generated.data, reels: parts }, topic);
   const markdown = metadataToMarkdown(structuredMetadata);
 
   const project = readProjectDocument(debateName);

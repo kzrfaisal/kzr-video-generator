@@ -11,9 +11,9 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import { run as generateScript } from '@/src/features/scripts/generateScript';
+import { run as generateScript, type ScriptPreferences } from '@/src/features/scripts/generateScript';
 import { generateMetadata } from '@/src/features/scripts/generateMetadata';
-import { run as generateAudio } from '@/src/features/rendering/generateAudio';
+import { audioIsCurrent, run as generateAudio } from '@/src/features/rendering/generateAudio';
 import { run as makeVideo } from '@/src/features/rendering/makeVideo';
 import { generateThumbnail } from '@/src/features/visuals/generateThumbnail';
 import { extract } from '@/src/features/reels/extractReelScripts';
@@ -55,10 +55,12 @@ export async function runScriptPhase(
   context: string = '',
   contentMode: ContentMode = 'debate',
   onStage: (stage: Stage) => void = () => {},
+  preferences: ScriptPreferences = {},
 ): Promise<string> {
   onStage('script');
   config.generateMetadata = false; // metadata is a separate step
-  const { debateName } = await generateScript(topic, context, contentMode);
+  configureRun(preferences);
+  const { debateName } = await generateScript(topic, context, contentMode, preferences);
   return debateName;
 }
 
@@ -120,6 +122,9 @@ export async function runVideoRender(
   onStage: (stage: Stage) => void = () => {},
 ): Promise<string> {
   applySavedConfig(debateName);
+  if (!audioIsCurrent(debateName)) {
+    throw new Error('Audio is missing or outdated. Generate audio before rendering the video.');
+  }
   onStage('video');
   makeVideo(debateName);
   const videoPath = findMainVideo(debateName);
@@ -140,7 +145,12 @@ if (require.main === module) {
     const context = parseContextFlag() ?? '';
     const contentModeArg = process.argv.find(arg => arg.startsWith('--content-mode='))?.split('=')[1];
     const contentMode = normalizeContentMode(contentModeArg);
-    runScriptPhase(topic, context, contentMode, emit)
+    const outputTypeArg = process.argv.find(arg => arg.startsWith('--output-type='))?.split('=')[1];
+    const outputType = outputTypeArg === 'short' ? 'short' : 'youtube';
+    const lengthArg = process.argv.find(arg => arg.startsWith('--video-length-minutes='))?.split('=')[1];
+    const videoLengthMinutes = lengthArg ? Number(lengthArg) : outputType === 'short' ? 0.5 : 3;
+    const extractReels = process.argv.some(arg => arg === '--extract-reels=true');
+    runScriptPhase(topic, context, contentMode, emit, { outputType, videoLengthMinutes, extractReels })
       .then(debateName => console.log(`@@DEBATE@@ ${debateName}`))
       .catch(die);
 

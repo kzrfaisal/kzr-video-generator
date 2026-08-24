@@ -4,7 +4,7 @@ import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/shared/filesystem/paths';
 import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
-import { metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
+import { applyExactProjectTitle, metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { readPipelineState } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
@@ -22,10 +22,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   const project = readProjectDocument(name);
   const script = readProjectScriptText(name);
   const mdPath = publishMetadata(name);
-  const metadata = fs.existsSync(mdPath)
+  const storedMetadata = fs.existsSync(mdPath)
     ? fs.readFileSync(mdPath, 'utf-8')
     : project.metadata ? metadataToMarkdown(project.metadata) : null;
-  const metadataFields = project.metadata ?? (metadata ? parseMetadataMarkdown(metadata) : null);
+  const storedMetadataFields = project.metadata ?? (storedMetadata ? parseMetadataMarkdown(storedMetadata) : null);
+  const metadataFields = storedMetadataFields
+    ? applyExactProjectTitle(storedMetadataFields, project.title)
+    : null;
+  const metadata = metadataFields ? metadataToMarkdown(metadataFields) : null;
   let publishing = null;
   const publishPath = publishRecordPath(name);
   if (fs.existsSync(publishPath)) {

@@ -14,6 +14,8 @@ export interface SceneOverlay {
 /** A scene is the stable, editable unit consumed by audio, visuals, and rendering. */
 export interface ScriptScene {
   id: string;
+  /** Stable grouping key for subtitle blocks that share one editable scene title. */
+  sectionId?: string;
   speaker: SpeakerRole;
   narration: string;
   headline: string;

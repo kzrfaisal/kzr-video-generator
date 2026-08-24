@@ -7,6 +7,7 @@ import { isValidVoice } from '@/src/shared/voices';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import type { PipelineStage } from '@/src/domain/pipeline/types';
 import { invalidateProjectStages } from '@/src/infrastructure/storage/localPipelineStore';
+import { invalidateAudioManifest } from '@/src/features/rendering/videoFiles';
 
 export const runtime = 'nodejs';
 
@@ -36,6 +37,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   }
   if (c.contentMode && !['debate', 'narrated-explainer'].includes(c.contentMode)) {
     return NextResponse.json({ error: `Invalid content mode: ${c.contentMode}` }, { status: 400 });
+  }
+  if (c.outputType && !['youtube', 'short'].includes(c.outputType)) {
+    return NextResponse.json({ error: `Invalid output type: ${c.outputType}` }, { status: 400 });
+  }
+  if (c.videoLengthMinutes !== undefined && (
+    typeof c.videoLengthMinutes !== 'number'
+    || !Number.isFinite(c.videoLengthMinutes)
+    || c.videoLengthMinutes < 0.25
+    || c.videoLengthMinutes > 60
+  )) {
+    return NextResponse.json({ error: 'Video length must be between 0.25 and 60 minutes.' }, { status: 400 });
+  }
+  if (c.extractReels !== undefined && typeof c.extractReels !== 'boolean') {
+    return NextResponse.json({ error: 'Extract reels must be true or false.' }, { status: 400 });
+  }
+  if (c.subtitlesEnabled !== undefined && typeof c.subtitlesEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'Subtitles enabled must be true or false.' }, { status: 400 });
+  }
+  if (c.sceneTitlesEnabled !== undefined && typeof c.sceneTitlesEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'Scene titles enabled must be true or false.' }, { status: 400 });
   }
   if (c.subtitleStyle && !(c.subtitleStyle in STYLES)) {
     return NextResponse.json({ error: `Invalid subtitle style: ${c.subtitleStyle}` }, { status: 400 });
@@ -72,6 +93,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
     ['script', 'metadata', 'visuals', 'thumbnail', 'audio', 'video', 'reel-scripts', 'reels', 'publishing']
       .forEach(stage => invalidated.add(stage as PipelineStage));
   }
+  if (['outputType', 'videoLengthMinutes'].some(key => c[key] !== undefined && changed(key))) {
+    ['script', 'metadata', 'visuals', 'thumbnail', 'audio', 'video', 'reel-scripts', 'reels', 'publishing']
+      .forEach(stage => invalidated.add(stage as PipelineStage));
+  }
+  if (c.extractReels !== undefined && changed('extractReels')) {
+    ['reel-scripts', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
+  }
   if (c.visualMode !== undefined && changed('visualMode')) {
     ['visuals', 'thumbnail', 'video', 'reels', 'publishing']
       .forEach(stage => invalidated.add(stage as PipelineStage));
@@ -83,7 +111,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (['voices', 'ttsModel', 'ttsSpeed'].some(key => c[key] !== undefined && changed(key))) {
     ['audio', 'video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
   }
-  if (['subtitleStyle', 'videoStyle', 'customSubtitle'].some(key => c[key] !== undefined && changed(key))) {
+  if (['subtitlesEnabled', 'sceneTitlesEnabled', 'subtitleStyle', 'videoStyle', 'customSubtitle'].some(key => c[key] !== undefined && changed(key))) {
     ['video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
   }
   const generation = project.config.generation;
@@ -91,6 +119,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (generation !== undefined) project.config.generation = generation;
   if (c.contentMode) project.contentMode = c.contentMode;
   saveProjectDocument(project);
+  if (invalidated.has('audio')) invalidateAudioManifest(name);
   if (invalidated.size > 0) {
     invalidateProjectStages(name, [...invalidated], 'Rendering configuration changed.');
   }

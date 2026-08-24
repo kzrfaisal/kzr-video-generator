@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { publishDir, publishMetadata, publishRecordPath, publishThumbnail } from '@/src/shared/filesystem/paths';
-import { parseSocialMetadata } from './metadata';
 import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { applyExactProjectTitle, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { uploadToYouTube } from './youtube';
 import { uploadInstagramReel } from './instagram';
 import { readVisualPlan } from '@/src/features/visuals/visualScenes';
@@ -37,7 +37,7 @@ function newestMainVideo(debateName: string): string {
   return path.join(dir, files[files.length - 1]);
 }
 
-function newestReels(debateName: string): Array<{ part: number; file: string }> {
+function newestReels(debateName: string, required = true): Array<{ part: number; file: string }> {
   const dir = publishDir(debateName);
   const byPart = new Map<number, string>();
   for (const file of fs.readdirSync(dir).filter(file => file.endsWith('.mp4')).sort()) {
@@ -45,7 +45,7 @@ function newestReels(debateName: string): Array<{ part: number; file: string }> 
     if (match) byPart.set(Number(match[1]), path.join(dir, file));
   }
   const reels = [...byPart].sort(([a], [b]) => a - b).map(([part, file]) => ({ part, file }));
-  if (reels.length !== 3) throw new Error('Generate all 3 reel videos before publishing.');
+  if (required && reels.length !== 3) throw new Error('Generate all 3 reel videos before publishing.');
   return reels;
 }
 
@@ -84,15 +84,19 @@ function pexelsCredits(debateName: string): string {
 }
 
 export async function publishAll(debateName: string, target: PublishTarget = 'all'): Promise<PublishRecord> {
-  const projectMetadata = readProjectDocument(debateName).metadata;
-  const metadata = projectMetadata ? {
+  const project = readProjectDocument(debateName);
+  const storedMetadata = project.metadata
+    ?? parseMetadataMarkdown(fs.readFileSync(publishMetadata(debateName), 'utf-8'));
+  const projectMetadata = applyExactProjectTitle(storedMetadata, project.title);
+  const metadata = {
     youtubeTitle: projectMetadata.youtube.title,
     youtubeDescription: projectMetadata.youtube.description,
     hashtags: projectMetadata.youtube.hashtags.join(' '),
     reelCaptions: projectMetadata.reels.map(reel => reel.caption),
-  } : parseSocialMetadata(fs.readFileSync(publishMetadata(debateName), 'utf-8'));
+  };
   const mainVideo = newestMainVideo(debateName);
-  const reels = newestReels(debateName);
+  const reelsRequired = target === 'instagram' || target === 'all' || project.config.extractReels !== false;
+  const reels = newestReels(debateName, reelsRequired);
   const now = new Date().toISOString();
   const record = readRecord(debateName) ?? {
     debateName, status: 'publishing', startedAt: now, updatedAt: now,

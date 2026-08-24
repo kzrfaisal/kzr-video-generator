@@ -1,16 +1,18 @@
 import { z } from 'zod';
 
-export const GeneratedSceneSchema = z.object({
+export const GeneratedSubtitleSchema = z.object({
   speaker: z.enum(['HOST', 'A', 'B']),
   narration: z.string().min(1).max(500),
-  headline: z.string().min(1).max(60),
   visualQuery: z.string().min(1).max(120),
   visualType: z.enum(['stock-photo', 'character', 'generated-image', 'none']),
   durationHintSeconds: z.number().min(1).max(30).nullable(),
 });
 
 export const GeneratedScriptSchema = z.object({
-  scenes: z.array(GeneratedSceneSchema).min(3).max(100),
+  sections: z.array(z.object({
+    title: z.string().max(60),
+    subtitles: z.array(GeneratedSubtitleSchema).min(2).max(6),
+  })).min(2).max(12),
 });
 
 const ReelMetadataSchema = z.object({
@@ -20,7 +22,7 @@ const ReelMetadataSchema = z.object({
 
 export const GeneratedMetadataSchema = z.object({
   youtube: z.object({
-    title: z.string().min(1).max(70),
+    title: z.string().min(1).max(120),
     description: z.string().min(1).max(5000),
     hashtags: z.array(z.string().regex(/^#[a-z0-9]+$/)).min(8).max(12),
   }),
@@ -39,4 +41,3 @@ export const GeneratedVisualPlanSchema = z.object({
 export type GeneratedScript = z.infer<typeof GeneratedScriptSchema>;
 export type GeneratedMetadata = z.infer<typeof GeneratedMetadataSchema>;
 export type GeneratedVisualPlan = z.infer<typeof GeneratedVisualPlanSchema>;
-

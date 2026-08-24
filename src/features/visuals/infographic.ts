@@ -67,10 +67,13 @@ export function createInfographicOverlay(
   fontFile: string,
   photoMode: boolean,
   sceneHeadline?: string,
+  showSceneTitle = true,
 ): InfographicOverlay {
   const accent = accentFor(speaker);
   const headline = sceneHeadline?.trim() || keyPhrases(text).join(' ');
-  const headlineLines = wrapText(headline.toUpperCase(), portrait ? 20 : 25).slice(0, 2);
+  const headlineLines = showSceneTitle
+    ? wrapText(headline.toUpperCase(), portrait ? 20 : 25).slice(0, 2)
+    : [];
   const topicLines = wrapText(readTopic(debateName), portrait ? 30 : 52).slice(0, 2);
   const files: string[] = [];
   const makeText = (suffix: string, value: string) => {
@@ -102,18 +105,20 @@ export function createInfographicOverlay(
     filters.push(`drawtext=fontfile=${font}:textfile=${file}:expansion=none:fontcolor=white@0.78:fontsize=${portrait ? 27 : 24}:shadowcolor=black@0.9:shadowx=2:shadowy=2:x=${x}:y=${y}`);
   });
 
-  const twoLineHeadline = headlineFiles.length > 1;
-  const card = portrait
-    ? { x: 48, y: twoLineHeadline ? 1400 : 1490, w: 984, h: twoLineHeadline ? 360 : 270, pad: 42, headlineSize: 54, lineHeight: 70 }
-    : { x: 64, y: twoLineHeadline ? 700 : 770, w: 1240, h: twoLineHeadline ? 270 : 200, pad: 42, headlineSize: 54, lineHeight: 68 };
-  filters.push(`drawbox=x=${card.x}:y=${card.y}:w=${card.w}:h=${card.h}:color=0x050b14@0.72:t=fill`);
-  filters.push(`drawbox=x=${card.x}:y=${card.y}:w=${portrait ? 9 : 8}:h=${card.h}:color=${accent}@1:t=fill`);
-  headlineFiles.forEach((file, index) => {
-    filters.push(`drawtext=fontfile=${font}:textfile=${file}:expansion=none:fontcolor=white:fontsize=${card.headlineSize}:shadowcolor=black@0.65:shadowx=2:shadowy=2:x=${card.x + card.pad}:y=${card.y + 38 + index * card.lineHeight}`);
-  });
+  if (headlineFiles.length > 0) {
+    const twoLineHeadline = headlineFiles.length > 1;
+    const card = portrait
+      ? { x: 48, y: twoLineHeadline ? 1400 : 1490, w: 984, h: twoLineHeadline ? 360 : 270, pad: 42, headlineSize: 54, lineHeight: 70 }
+      : { x: 64, y: twoLineHeadline ? 700 : 770, w: 1240, h: twoLineHeadline ? 270 : 200, pad: 42, headlineSize: 54, lineHeight: 68 };
+    filters.push(`drawbox=x=${card.x}:y=${card.y}:w=${card.w}:h=${card.h}:color=0x050b14@0.72:t=fill`);
+    filters.push(`drawbox=x=${card.x}:y=${card.y}:w=${portrait ? 9 : 8}:h=${card.h}:color=${accent}@1:t=fill`);
+    headlineFiles.forEach((file, index) => {
+      filters.push(`drawtext=fontfile=${font}:textfile=${file}:expansion=none:fontcolor=white:fontsize=${card.headlineSize}:shadowcolor=black@0.65:shadowx=2:shadowy=2:x=${card.x + card.pad}:y=${card.y + 38 + index * card.lineHeight}`);
+    });
 
-  const ruleY = card.y + card.h - 36;
-  filters.push(`drawbox=x=${card.x + card.pad}:y=${ruleY}:w=${portrait ? 170 : 140}:h=5:color=${accent}@1:t=fill`);
+    const ruleY = card.y + card.h - 36;
+    filters.push(`drawbox=x=${card.x + card.pad}:y=${ruleY}:w=${portrait ? 170 : 140}:h=5:color=${accent}@1:t=fill`);
+  }
 
   return { filters, tempFiles: files };
 }

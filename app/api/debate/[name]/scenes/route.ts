@@ -4,6 +4,7 @@ import { scriptToLegacyText } from '@/src/domain/projects/script';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import { invalidateProjectStages, markStageCompleted } from '@/src/infrastructure/storage/localPipelineStore';
+import { invalidateAudioManifest } from '@/src/features/rendering/videoFiles';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
       const previous = existing.get(id);
       return {
         id,
+        sectionId: typeof value.sectionId === 'string' && /^section-\d{3,}$/.test(value.sectionId)
+          ? value.sectionId
+          : previous?.sectionId,
         speaker: value.speaker,
         narration,
         headline: typeof value.headline === 'string' ? value.headline.trim() : '',
@@ -61,6 +65,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
       ['metadata', 'visuals', 'thumbnail', 'audio', 'video', 'reel-scripts', 'reels', 'publishing'],
       'Scenes changed.',
     );
+    invalidateAudioManifest(name);
     return NextResponse.json({ ok: true, scenes: saved.scenes, script: scriptToLegacyText(saved.scenes) });
   } catch (error) {
     return NextResponse.json(

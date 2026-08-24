@@ -28,7 +28,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
   if (!result.ok || !('EXTRACT_DONE' in result.markers)) {
     markStageFailed(name, 'reel-scripts', result.output.slice(-600) || 'Reel script extraction failed.');
     return NextResponse.json(
-      { error: 'Could not extract reel scripts. The debate may not follow the expected structure.', detail: result.output.slice(-600) },
+      { error: 'Could not create the three reel scripts.', detail: result.output.slice(-600) },
       { status: 422 },
     );
   }

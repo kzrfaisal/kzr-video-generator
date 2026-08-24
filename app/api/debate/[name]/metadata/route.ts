@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { runStage, isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { projectPath, publishDir, publishMetadata } from '@/src/shared/filesystem/paths';
-import { metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
+import { applyExactProjectTitle, metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { GeneratedMetadataSchema } from '@/src/services/openai/schemas';
 import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 import {
@@ -50,9 +50,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   const body = await req.json().catch(() => ({}));
   try {
     const project = readProjectDocument(name);
-    const metadataFields = body.metadataFields
+    const submittedMetadata = body.metadataFields
       ? GeneratedMetadataSchema.parse(body.metadataFields)
       : parseMetadataMarkdown(typeof body.metadata === 'string' ? body.metadata : '');
+    const metadataFields = applyExactProjectTitle(submittedMetadata, project.title);
     const metadata = metadataToMarkdown(metadataFields);
     project.metadata = metadataFields;
     saveProjectDocument(project);

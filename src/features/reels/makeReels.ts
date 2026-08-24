@@ -1,11 +1,18 @@
 import fs from 'fs';
 import path from 'path';
-import { ensureDir, waitForEnter } from '@/src/shared/utils';
+import { ensureDir, parseDebateFile, waitForEnter } from '@/src/shared/utils';
 import { extract, ExtractedPart } from './extractReelScripts';
 import { run as makeVideo } from '@/src/features/rendering/makeVideo';
 import { ensureOutroAudio } from './reelOutro';
+import { buildRenderCaptions, type RenderCaption } from '@/src/domain/projects/captions';
 
-function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, outroMp3: string): string {
+function copyPartAudio(
+  srcDir: string,
+  srcFiles: string[],
+  sourceCaptions: RenderCaption[],
+  part: ExtractedPart,
+  outroMp3: string,
+): string {
   const destDir = `output/audios/reels/${part.name}`;
   ensureDir(destDir);
 
@@ -14,12 +21,16 @@ function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, 
     if (f.endsWith('.mp3')) fs.unlinkSync(path.join(destDir, f));
   }
 
-  part.origLineIndices.forEach((origIdx, newIdx) => {
-    const srcFile = srcFiles[origIdx];
+  const sourceLineIndices = new Set(part.origLineIndices);
+  const selectedCaptionIndices = sourceCaptions
+    .map((caption, index) => ({ caption, index }))
+    .filter(({ caption }) => sourceLineIndices.has(caption.sourceLineIndex));
+  selectedCaptionIndices.forEach(({ index: sourceAudioIndex }, newIdx) => {
+    const srcFile = srcFiles[sourceAudioIndex];
     if (!srcFile) {
       throw new Error(
-        `Missing source audio for line ${origIdx} of ${part.name}. ` +
-        `Expected ${srcFiles.length} files but origIdx=${origIdx} is out of range.`
+        `Missing source audio segment ${sourceAudioIndex + 1} of ${part.name}. ` +
+        `Only ${srcFiles.length} source files were found.`
       );
     }
     const speaker = srcFile.split('_')[1].split('.')[0];
@@ -29,7 +40,7 @@ function copyPartAudio(srcDir: string, srcFiles: string[], part: ExtractedPart, 
 
   // Append the cached HOST outro as the next-numbered file so it pairs with the
   // extra `HOST|<outro>` line appended by extractReelScripts.
-  const outroIdx = part.origLineIndices.length + 1;
+  const outroIdx = selectedCaptionIndices.length + 1;
   const outroDest = path.join(destDir, `${String(outroIdx).padStart(3, '0')}_HOST.mp3`);
   fs.copyFileSync(outroMp3, outroDest);
 
@@ -53,12 +64,13 @@ export async function buildReelsFromParts(debateName: string, parts: ExtractedPa
   if (srcFiles.length === 0) {
     throw new Error(`No audio files in ${srcAudioDir}.`);
   }
+  const sourceCaptions = buildRenderCaptions(parseDebateFile(`output/debates/${debateName}.txt`));
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     const outroMp3 = await ensureOutroAudio(i as 0 | 1 | 2, part.contentMode ?? 'debate');
     console.log(`\nCopying audio for ${part.name} (${part.origLineIndices.length} lines + outro)...`);
-    copyPartAudio(srcAudioDir, srcFiles, part, outroMp3);
+    copyPartAudio(srcAudioDir, srcFiles, sourceCaptions, part, outroMp3);
 
     console.log(`\nBuilding video for ${part.name}...`);
     makeVideo(`reels/${part.name}`);

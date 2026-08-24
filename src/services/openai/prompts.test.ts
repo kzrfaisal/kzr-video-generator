@@ -18,28 +18,65 @@ test('keeps application rules in the developer prompt and creator data in the us
       context: fixture.context,
       contentMode: fixture.contentMode,
       videoLengthTarget: '2 minutes',
+      wordCountMinimum: 250,
+      wordCountMaximum: 310,
+      wordCountTarget: 280,
+      wordsPerSubtitleMinimum: 20,
+      wordsPerSubtitleMaximum: 28,
     });
     assert.match(developer, new RegExp(SCRIPT_PROMPT_VERSION));
     assert.doesNotMatch(developer, new RegExp(fixture.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     for (const phrase of fixture.mustMention) assert.ok(user.includes(phrase));
+    assert.ok(user.includes('250-310 total spoken words'));
+    assert.ok(user.includes('20-28 words'));
+    assert.ok(user.includes('280'));
   }
 });
 
 test('accepts a valid structured explainer and rejects an invalid speaker', () => {
   const valid = {
-    scenes: [{
-      speaker: 'HOST',
-      narration: 'Rome built systems that still shape modern life.',
-      headline: 'A lasting system',
-      visualQuery: 'ancient roman forum sunrise',
-      visualType: 'stock-photo',
-      durationHintSeconds: null,
+    sections: [{
+      title: 'A lasting system',
+      subtitles: [{
+        speaker: 'HOST',
+        narration: 'Rome built systems that still shape modern life.',
+        visualQuery: 'ancient roman forum sunrise',
+        visualType: 'stock-photo',
+        durationHintSeconds: null,
+      }, {
+        speaker: 'HOST',
+        narration: 'Its roads and public spaces remain visible in city planning.',
+        visualQuery: 'roman road modern city',
+        visualType: 'stock-photo',
+        durationHintSeconds: null,
+      }],
+    }, {
+      title: 'A modern legacy',
+      subtitles: [{
+        speaker: 'HOST',
+        narration: 'Roman systems influenced later cities.',
+        visualQuery: 'roman forum modern plaza',
+        visualType: 'stock-photo',
+        durationHintSeconds: null,
+      }, {
+        speaker: 'HOST',
+        narration: 'Their legacy remains part of daily urban life.',
+        visualQuery: 'modern civic plaza people',
+        visualType: 'stock-photo',
+        durationHintSeconds: null,
+      }],
     }],
   };
-  // The service schema requires at least three scenes.
-  valid.scenes.push({ ...valid.scenes[0] }, { ...valid.scenes[0] });
   assert.equal(GeneratedScriptSchema.safeParse(valid).success, true);
-  assert.equal(GeneratedScriptSchema.safeParse({ scenes: [{ ...valid.scenes[0], speaker: 'NARRATOR' }] }).success, false);
+  assert.equal(GeneratedScriptSchema.safeParse({
+    sections: [{
+      ...valid.sections[0],
+      subtitles: [{ ...valid.sections[0].subtitles[0], speaker: 'NARRATOR' }, valid.sections[0].subtitles[1]],
+    }, valid.sections[1]],
+  }).success, false);
+  assert.equal(GeneratedScriptSchema.safeParse({
+    sections: [{ ...valid.sections[0], subtitles: [valid.sections[0].subtitles[0]] }, valid.sections[1]],
+  }).success, false);
 });
 
 test('enforces complete publishing metadata', () => {
@@ -67,4 +104,3 @@ test('enforces visual-plan IDs and copy fields', () => {
   assert.match(METADATA_PROMPT_VERSION, /^metadata-v\d/);
   assert.match(VISUAL_PROMPT_VERSION, /^visual-v\d/);
 });
-

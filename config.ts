@@ -128,6 +128,10 @@ export interface Config {
   subtitleLineHeight: number;
   /** Maximum characters per subtitle line before wrapping */
   subtitleWrapWidth: number;
+  /** Show or hide all spoken-word subtitles while preserving other visual overlays. */
+  subtitlesEnabled: boolean;
+  /** Show or hide the large scene headline on infographic videos. */
+  sceneTitlesEnabled: boolean;
 
   /** OpenAI TTS model: 'tts-1' (faster/cheaper) or 'tts-1-hd' (higher quality) */
   ttsModel: string;
@@ -197,6 +201,8 @@ const baseConfig: Config = {
   font: 'assets/fonts/Segoe UI Italic.ttf',
   subtitleLineHeight: 50,
   subtitleWrapWidth: 78,
+  subtitlesEnabled: true,
+  sceneTitlesEnabled: true,
 
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -320,9 +326,15 @@ export interface RunOverrides {
   videoStyle?: string;                 // a VIDEO_STYLES key (e.g. style1 / style2)
   visualMode?: 'debate' | 'infographic';
   contentMode?: 'debate' | 'narrated-explainer';
+  outputType?: 'youtube' | 'short';
+  videoLengthMinutes?: number;
+  extractReels?: boolean;
+  visualPacing?: 'relaxed' | 'balanced' | 'detailed';
   voices?: Partial<Config['voices']>;  // per-speaker OpenAI voice
   ttsModel?: string;                   // 'tts-1' | 'tts-1-hd'
   ttsSpeed?: number;                   // 0.25–4.0
+  subtitlesEnabled?: boolean;          // global spoken subtitle visibility
+  sceneTitlesEnabled?: boolean;        // infographic scene headline visibility
   subtitleStyle?: string;              // one STYLES key, applied to all speakers
   customSubtitle?: Partial<SubtitleStyle>; // custom fields layered over the chosen style
 }
@@ -333,7 +345,7 @@ export interface RunOverrides {
  * Safe because a stage process runs one config at a time. Throws on unknown keys.
  */
 export function configureRun(o: RunOverrides): void {
-  const style = o.videoStyle ?? config.videoStyle;
+  const style = o.outputType === 'short' ? 'style3' : (o.videoStyle ?? config.videoStyle);
   if (!(style in VIDEO_STYLES)) {
     throw new Error(`Unknown video style: "${style}". Available: ${Object.keys(VIDEO_STYLES).join(', ')}`);
   }
@@ -341,6 +353,10 @@ export function configureRun(o: RunOverrides): void {
 
   if (o.visualMode) merged.visualMode = o.visualMode;
   if (o.contentMode) merged.contentMode = o.contentMode;
+  if (typeof o.videoLengthMinutes === 'number' && Number.isFinite(o.videoLengthMinutes)) {
+    const minutes = Math.max(0.25, Math.min(60, o.videoLengthMinutes));
+    merged.videoLengthTarget = `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  }
 
   if (o.voices) {
     merged.voices = { ...merged.voices };
@@ -350,6 +366,8 @@ export function configureRun(o: RunOverrides): void {
   }
   if (o.ttsModel) merged.ttsModel = o.ttsModel as Config['ttsModel'];
   if (typeof o.ttsSpeed === 'number') merged.ttsSpeed = o.ttsSpeed;
+  if (typeof o.subtitlesEnabled === 'boolean') merged.subtitlesEnabled = o.subtitlesEnabled;
+  if (typeof o.sceneTitlesEnabled === 'boolean') merged.sceneTitlesEnabled = o.sceneTitlesEnabled;
   if (o.customSubtitle && Object.keys(o.customSubtitle).length > 0) {
     // Register a runtime style entry combining the chosen base style + the custom fields,
     // then point every speaker at it. createVideoSegments reads STYLES[key] at call time.

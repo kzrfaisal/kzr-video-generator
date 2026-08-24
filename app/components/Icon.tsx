@@ -4,12 +4,20 @@ export type IconName =
   | 'arrow-up'
   | 'check'
   | 'copy'
+  | 'filter'
   | 'folder'
+  | 'grid'
   | 'home'
   | 'image'
   | 'moon'
+  | 'list'
+  | 'clock'
+  | 'monitor'
   | 'play'
   | 'plus'
+  | 'save'
+  | 'search'
+  | 'smartphone'
   | 'sparkles'
   | 'sun'
   | 'trash'
@@ -61,6 +69,22 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
       return <svg {...common}><path d="M12 5v14M7 14l5 5 5-5" /></svg>;
     case 'copy':
       return <svg {...common}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>;
+    case 'search':
+      return <svg {...common}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>;
+    case 'filter':
+      return <svg {...common}><path d="M4 5h16l-6.5 7.2V19l-3 1v-7.8Z" /></svg>;
+    case 'grid':
+      return <svg {...common}><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></svg>;
+    case 'list':
+      return <svg {...common}><path d="M8 6h12M8 12h12M8 18h12" /><circle cx="4" cy="6" r=".8" fill="currentColor" stroke="none" /><circle cx="4" cy="12" r=".8" fill="currentColor" stroke="none" /><circle cx="4" cy="18" r=".8" fill="currentColor" stroke="none" /></svg>;
+    case 'clock':
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
+    case 'monitor':
+      return <svg {...common}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>;
+    case 'smartphone':
+      return <svg {...common}><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></svg>;
+    case 'save':
+      return <svg {...common}><path d="M5 3h12l2 2v16H5Z" /><path d="M8 3v6h8V3M8 21v-7h8v7" /></svg>;
     case 'trash':
       return <svg {...common}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>;
   }

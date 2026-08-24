@@ -4,6 +4,8 @@ import { createJob, hasActiveJob, startJob } from '@/src/infrastructure/jobs/job
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { scriptPath } from '@/src/shared/filesystem/paths';
 import { readVisualPlan } from '@/src/features/visuals/visualScenes';
+import { updateVisualSceneRanges } from '@/src/features/visuals/visualScenes';
+import { invalidateProjectStages } from '@/src/infrastructure/storage/localPipelineStore';
 
 export const runtime = 'nodejs';
 
@@ -28,4 +30,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
   const job = createJob({ debateName: name, kind: 'visuals' });
   startJob(job, ['visuals', name]);
   return NextResponse.json({ jobId: job.id, attempt: job.attempt });
+}
+
+export async function PUT(req: Request, { params }: { params: Promise<{ name: string }> }) {
+  const { name } = await params;
+  if (!isValidDebateName(name)) return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
+  const body = await req.json().catch(() => ({}));
+  if (!Array.isArray(body.ranges)) return NextResponse.json({ error: 'Picture ranges are required.' }, { status: 400 });
+  try {
+    const plan = updateVisualSceneRanges(name, body.ranges);
+    invalidateProjectStages(name, ['video', 'reels', 'publishing'], 'Picture timing changed.');
+    return NextResponse.json({ plan });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not save picture timing.' }, { status: 400 });
+  }
 }

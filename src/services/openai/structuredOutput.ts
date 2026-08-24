@@ -3,7 +3,11 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import type { z } from 'zod';
 import { withRetry } from '@/src/shared/utils';
 
-const client = new OpenAI();
+let client: OpenAI | null = null;
+
+function openAIClient(): OpenAI {
+  return client ?? (client = new OpenAI());
+}
 
 export interface StructuredUsage {
   inputTokens: number;
@@ -24,7 +28,7 @@ export async function generateStructured<T>(input: {
   userPrompt: string;
   label: string;
 }): Promise<StructuredResult<T>> {
-  const response = await withRetry(() => client.responses.parse({
+  const response = await withRetry(() => openAIClient().responses.parse({
     model: input.model,
     store: false,
     input: [
