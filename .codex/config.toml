@@ -1,0 +1,7 @@
+default_permissions = "project-private-env"
+
+[permissions.project-private-env]
+extends = ":workspace"
+
+[permissions.project-private-env.filesystem.":workspace_roots"]
+".env" = "deny"

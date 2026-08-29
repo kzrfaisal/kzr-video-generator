@@ -7,14 +7,14 @@ import { ensureDir, parseDebateFile } from '@/src/shared/utils';
 import { config } from '@/config';
 import { buildRenderCaptions } from '@/src/domain/projects/captions';
 import { audioManifestPath } from './videoFiles';
+import { speechCostUsd } from '@/src/services/openai/pricing';
+import { recordSpeechUsage } from '@/src/services/openai/usageLedger';
 
 let client: OpenAI | null = null;
 
 function openAIClient(): OpenAI {
   return client ?? (client = new OpenAI());
 }
-
-const TTS_COST_PER_CHAR = 15 / 1_000_000;
 
 function renderCaptions(debateName: string) {
   return buildRenderCaptions(parseDebateFile(`output/debates/${debateName}.txt`));
@@ -54,6 +54,11 @@ async function generateTts(text: string, mp3File: string, voice: string, attempt
       speed: config.ttsSpeed,
     });
     const buffer = Buffer.from(await response.arrayBuffer());
+    recordSpeechUsage({
+      operation: 'subtitle audio',
+      model: config.ttsModel,
+      characters: text.length,
+    });
     fs.writeFileSync(mp3File, buffer);
   } catch (err: any) {
     // Retry transient failures (rate limits, 5xx, network) — OpenAI TTS occasionally 500s.
@@ -97,7 +102,7 @@ export async function run(debateName: string): Promise<{ characters: number; aud
     segments: lines.length,
   }, null, 2));
 
-  const audioCost = totalChars * TTS_COST_PER_CHAR;
+  const audioCost = speechCostUsd(config.ttsModel, totalChars);
   return { characters: totalChars, audioCost };
 }
 

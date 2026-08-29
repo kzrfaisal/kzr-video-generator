@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import type { z } from 'zod';
 import { withRetry } from '@/src/shared/utils';
+import { recordTextUsage } from './usageLedger';
 
 let client: OpenAI | null = null;
 
@@ -11,6 +12,7 @@ function openAIClient(): OpenAI {
 
 export interface StructuredUsage {
   inputTokens: number;
+  cachedInputTokens: number;
   outputTokens: number;
 }
 
@@ -40,6 +42,17 @@ export async function generateStructured<T>(input: {
     },
   }), input.label);
 
+  const usage = {
+    inputTokens: response.usage?.input_tokens ?? 0,
+    cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+  };
+  recordTextUsage({
+    operation: input.label,
+    model: input.model,
+    ...usage,
+  });
+
   if (!response.output_parsed) {
     const detail = response.incomplete_details?.reason
       ? ` Response incomplete: ${response.incomplete_details.reason}.`
@@ -49,10 +62,7 @@ export async function generateStructured<T>(input: {
 
   return {
     data: response.output_parsed,
-    usage: {
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-    },
+    usage,
     responseId: response.id,
   };
 }

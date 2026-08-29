@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 import { ensureDir } from '@/src/shared/utils';
 import { config } from '@/config';
 import type { ContentMode } from '@/src/features/projects/contentMode';
+import { recordSpeechUsage } from '@/src/services/openai/usageLedger';
 
 const client = new OpenAI();
 
@@ -44,14 +45,20 @@ export async function ensureOutroAudio(partIndex: 0 | 1 | 2, contentMode: Conten
 
   const voice = config.voices.HOST ?? 'alloy';
   console.log(`Generating cached outro audio: ${mp3File} using ${voice}`);
+  const text = outroText(partIndex, contentMode);
   const response = await client.audio.speech.create({
     model: config.ttsModel as 'tts-1' | 'tts-1-hd',
     voice: voice as 'alloy' | 'echo' | 'ash' | 'onyx',
-    input: outroText(partIndex, contentMode),
+    input: text,
     response_format: 'mp3',
     speed: config.ttsSpeed,
   });
   const buffer = Buffer.from(await response.arrayBuffer());
+  recordSpeechUsage({
+    operation: 'reel outro audio',
+    model: config.ttsModel,
+    characters: text.length,
+  });
   fs.writeFileSync(mp3File, buffer);
   return mp3File;
 }

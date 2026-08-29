@@ -10,9 +10,7 @@ import { generateStructured } from '@/src/services/openai/structuredOutput';
 import { SCRIPT_PROMPT_VERSION, scriptDeveloperPrompt, scriptUserPrompt } from '@/src/services/openai/prompts';
 import type { ScriptScene, SpeakerRole } from '@/src/domain/projects/types';
 import { splitCaptionText } from '@/src/domain/projects/captions';
-
-const SCRIPT_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
-const SCRIPT_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
+import { textCostUsd } from '@/src/services/openai/pricing';
 
 const EMPTY_METADATA: MetadataResult = { promptTokens: 0, completionTokens: 0, cost: 0 };
 
@@ -149,6 +147,7 @@ export async function run(
     label: 'script generation',
   });
   let inputTokens = generated.usage.inputTokens;
+  let cachedInputTokens = generated.usage.cachedInputTokens;
   let outputTokens = generated.usage.outputTokens;
   let bestGenerated = generated;
   let bestDistance = Math.abs(generatedWordCount(generated.data) - targets.targetWords);
@@ -167,6 +166,7 @@ export async function run(
       label: `script duration correction ${attempt}`,
     });
     inputTokens += generated.usage.inputTokens;
+    cachedInputTokens += generated.usage.cachedInputTokens;
     outputTokens += generated.usage.outputTokens;
     const distance = Math.abs(generatedWordCount(generated.data) - targets.targetWords);
     if (distance < bestDistance) {
@@ -251,9 +251,12 @@ export async function run(
 
   const metadata = await generateMetadataIfEnabled(topic, context, content, debateName, contentMode);
 
-  const scriptCost =
-    inputTokens * SCRIPT_INPUT_COST_PER_TOKEN +
-    outputTokens * SCRIPT_OUTPUT_COST_PER_TOKEN;
+  const scriptCost = textCostUsd({
+    model: config.scriptModel,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+  });
 
   return { debateName, promptTokens: inputTokens, completionTokens: outputTokens, scriptCost, metadata };
 }

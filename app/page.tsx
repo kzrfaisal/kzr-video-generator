@@ -90,6 +90,48 @@ interface PublishState {
   error?: string;
 }
 
+interface PublishingCredentialStatus {
+  configured: boolean;
+  valid: boolean | null;
+  tokenExpiresAt: string | null;
+  dataAccessExpiresAt?: string | null;
+  message: string;
+}
+
+interface PublishingReadiness {
+  ready: boolean;
+  missing: string[];
+  platforms: {
+    youtube: PublishingCredentialStatus | null;
+    instagram: PublishingCredentialStatus | null;
+  };
+}
+
+interface UsageNumbers {
+  calls?: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  characters: number;
+  costUsd: number;
+  costInr: number;
+}
+
+interface UsageCall extends UsageNumbers {
+  id: string;
+  createdAt: string;
+  operation: string;
+  model: string;
+}
+
+interface UsageSummary {
+  total: UsageNumbers & { calls: number };
+  lastCall: UsageCall | null;
+  usdToInr: number;
+  exchangeRateAsOf: string;
+}
+
 interface ProjectMetadata {
   youtube: { title: string; description: string; hashtags: string[] };
   reels: Array<{ part: 1 | 2 | 3; caption: string }>;
@@ -180,6 +222,36 @@ function formatEditorTime(seconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
+function formatCredentialDate(value: string): string {
+  return new Intl.DateTimeFormat('en', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function formatTokens(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
+function formatUsageMoney(value: number, currency: 'USD' | 'INR'): string {
+  const symbol = currency === 'USD' ? '$' : '₹';
+  if (value === 0) return `${symbol}0.00`;
+  const digits = value < 0.01 ? 5 : value < 1 ? 3 : 2;
+  return `${symbol}${value.toFixed(digits)}`;
+}
+
+function publishingAuthError(message: string): 'youtube' | 'instagram' | null {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('youtube') && (normalized.includes('authoriz') || normalized.includes('token'))) {
+    return 'youtube';
+  }
+  if ((normalized.includes('instagram') || normalized.includes('access token'))
+    && (normalized.includes('expired') || normalized.includes('token') || normalized.includes('authoriz'))) {
+    return 'instagram';
+  }
+  return null;
+}
+
 function sceneCountForLength(minutes: number, outputType: RunConfig['outputType']): number {
   return outputType === 'short' ? 2 : Math.max(2, Math.min(8, Math.round(minutes / 0.65)));
 }
@@ -268,12 +340,16 @@ export default function Home() {
   const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
   const [selectedVisualId, setSelectedVisualId] = useState<string | null>(null);
   const [playingSubtitleIndex, setPlayingSubtitleIndex] = useState<number | null>(null);
+  const [publishingReadiness, setPublishingReadiness] = useState<PublishingReadiness | null>(null);
+  const [checkingPublishing, setCheckingPublishing] = useState(false);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
     refreshProjects();
+    refreshUsage();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -308,6 +384,18 @@ export default function Home() {
   }, [debate?.debateName]);
 
   useEffect(() => {
+    if (workspaceSection !== 'publish' || !debate?.debateName) return;
+    let cancelled = false;
+    setCheckingPublishing(true);
+    fetch('/api/publish-readiness?platform=all')
+      .then(jsonOrThrow)
+      .then(data => { if (!cancelled) setPublishingReadiness(data as PublishingReadiness); })
+      .catch(() => { if (!cancelled) setPublishingReadiness(null); })
+      .finally(() => { if (!cancelled) setCheckingPublishing(false); });
+    return () => { cancelled = true; };
+  }, [workspaceSection, debate?.debateName]);
+
+  useEffect(() => {
     if (visualScenes.length === 0) setSelectedVisualId(null);
     else if (!visualScenes.some(scene => scene.id === selectedVisualId)) setSelectedVisualId(visualScenes[0].id);
   }, [visualScenes, selectedVisualId]);
@@ -317,6 +405,13 @@ export default function Home() {
       const data = await jsonOrThrow(await fetch('/api/debate'));
       setProjects(data.projects ?? []);
     } catch { /* the editor remains usable if project history cannot load */ }
+  }
+
+  async function refreshUsage() {
+    try {
+      const data = await jsonOrThrow(await fetch('/api/usage', { cache: 'no-store' }));
+      setUsage(data as UsageSummary);
+    } catch { /* Usage display must never block the video workflow. */ }
   }
 
   async function refreshVisuals(debateName: string) {
@@ -403,7 +498,7 @@ export default function Home() {
     setBusy(action);
     try { await fn(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong.'); }
-    finally { setBusy(''); }
+    finally { setBusy(''); await refreshUsage(); }
   }
 
   // Start a long job and resolve when it finishes (rejecting on error). Updates progress
@@ -508,6 +603,24 @@ export default function Home() {
       body: JSON.stringify({ config: selectedConfig }),
     }));
   };
+  const updateSceneTitles = async (enabled: boolean) => {
+    const previous = cfg.sceneTitlesEnabled;
+    const selectedConfig = { ...buildConfigPayload(), sceneTitlesEnabled: enabled };
+    setCfg(current => ({ ...current, sceneTitlesEnabled: enabled }));
+    if (!debate) return;
+    try {
+      await saveConfig(debate.debateName, selectedConfig);
+      setDebate(current => current ? {
+        ...current,
+        config: { ...(current.config ?? {}), sceneTitlesEnabled: enabled },
+        videoExists: false,
+        publishing: null,
+      } : current);
+    } catch (err) {
+      setCfg(current => ({ ...current, sceneTitlesEnabled: previous }));
+      setError(err instanceof Error ? err.message : 'Could not save the scene-title setting.');
+    }
+  };
   const rawThumbnail = async (name = debate!.debateName) => {
     await jsonOrThrow(await fetch(`/api/debate/${name}/thumbnail`, { method: 'POST' }));
     setDebate(d => (d ? { ...d, thumbnailExists: true } : d));
@@ -532,10 +645,37 @@ export default function Home() {
     setDebate(d => (d ? { ...d, reelScripts: data.parts } : d));
   };
   const rawReels = async (name = debate!.debateName) => startJobAndWait(`/api/debate/${name}/reels`, 'reels', name);
+  const refreshPublishingReadiness = async (target: PublishTarget = 'all') => {
+    setCheckingPublishing(true);
+    try {
+      const data = await jsonOrThrow(await fetch(`/api/publish-readiness?platform=${target}`)) as PublishingReadiness;
+      setPublishingReadiness(current => ({
+        ready: target === 'all' ? data.ready : (current?.ready ?? false),
+        missing: data.missing,
+        platforms: {
+          youtube: data.platforms.youtube ?? current?.platforms.youtube ?? null,
+          instagram: data.platforms.instagram ?? current?.platforms.instagram ?? null,
+        },
+      }));
+      return data;
+    } finally {
+      setCheckingPublishing(false);
+    }
+  };
   const rawPublish = async (target: PublishTarget, name = debate!.debateName) => {
-    const readiness = await jsonOrThrow(await fetch(`/api/publish-readiness?platform=${target}`));
+    const readiness = await refreshPublishingReadiness(target);
     if (!readiness.ready) {
-      throw new Error(`Set up ${target} publishing in .env first. Missing: ${readiness.missing.join(', ')}`);
+      if (readiness.missing.length) {
+        throw new Error(`Set up ${target} publishing in .env first. Missing: ${readiness.missing.join(', ')}`);
+      }
+      const status = target === 'youtube'
+        ? readiness.platforms.youtube
+        : target === 'instagram'
+          ? readiness.platforms.instagram
+          : readiness.platforms.youtube?.valid === false
+            ? readiness.platforms.youtube
+            : readiness.platforms.instagram;
+      throw new Error(`${target === 'instagram' ? 'Instagram' : 'YouTube'} authorization needs attention: ${status?.message ?? 'Token validation failed.'}`);
     }
     const kind: JobKind = target === 'all' ? 'publish' : `publish-${target}`;
     try { await startJobAndWait(`/api/debate/${name}/publish`, kind, name, { target }); }
@@ -984,6 +1124,8 @@ export default function Home() {
   const youtubePublished = !!debate?.publishing?.youtube?.main
     && (!cfg.extractReels || (debate.publishing.youtube.shorts?.length ?? 0) === 3);
   const instagramPublished = (debate?.publishing?.instagram?.length ?? 0) === 3;
+  const publishError = debate?.publishing?.error || error;
+  const authErrorPlatform = publishingAuthError(publishError);
   const completePackReady = !!debate?.videoExists
     && (cfg.outputType === 'short' || debate.reelsCount === 3);
   // A render running on some OTHER debate (our own render is already shown via `job`).
@@ -1018,6 +1160,18 @@ export default function Home() {
 
   return (
     <main className={`app-shell theme-${theme} ${creating ? 'creation-mode' : ''} ${editingProject ? 'project-mode' : ''} ${editingScript ? 'script-mode' : ''}`}>
+      <aside className="usage-hud" aria-label="OpenAI usage and estimated cost">
+        <div>
+          <span>Total</span>
+          <strong>{formatTokens(usage?.total.totalTokens ?? 0)} tokens</strong>
+          <small>{formatUsageMoney(usage?.total.costUsd ?? 0, 'USD')} · {formatUsageMoney(usage?.total.costInr ?? 0, 'INR')}</small>
+        </div>
+        <div title={usage?.lastCall ? `${usage.lastCall.operation} · ${usage.lastCall.model}` : 'No OpenAI calls tracked yet'}>
+          <span>Last call</span>
+          <strong>{formatTokens(usage?.lastCall?.totalTokens ?? 0)} tokens</strong>
+          <small>{usage?.lastCall?.characters ? `${formatTokens(usage.lastCall.characters)} chars · ` : ''}{formatUsageMoney(usage?.lastCall?.costUsd ?? 0, 'USD')} · {formatUsageMoney(usage?.lastCall?.costInr ?? 0, 'INR')}</small>
+        </div>
+      </aside>
       {!creating && !editingProject && <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark"><Icon name="play" size={15} /></span>
@@ -1411,7 +1565,13 @@ export default function Home() {
               </aside>
 
               <section className="editor-preview-pane">
-                <div className="editor-preview-bar"><span>16:9</span><span>{debate.videoExists ? 'Rendered preview' : 'Storyboard preview'}</span></div>
+                <div className="editor-preview-bar">
+                  <span>16:9 · {debate.videoExists ? 'Rendered preview' : 'Storyboard preview'}</span>
+                  <div className="editor-preview-options">
+                    {cfg.visualMode === 'infographic' && <label><input type="checkbox" checked={cfg.sceneTitlesEnabled} onChange={event => { void updateSceneTitles(event.target.checked); }} disabled={working} /> Scene titles</label>}
+                    <label><input type="checkbox" checked={cfg.subtitlesEnabled} onChange={event => setCfg(current => ({ ...current, subtitlesEnabled: event.target.checked }))} disabled={working} /> Subtitles</label>
+                  </div>
+                </div>
                 <div className="editor-preview-stage">
                   {debate.videoExists ? (
                     <video key={nonce} controls preload="metadata" src={`/api/debate/${name}/video?t=${nonce}`} />
@@ -1454,10 +1614,6 @@ export default function Home() {
                   <button type="button" className="btn-secondary editor-replace-picture" onClick={() => regenerateVisual(selectedVisual)} disabled={working || !selectedVisual.searchQuery.trim()}>{busy === `visual-${selectedVisual.id}` ? 'Replacing…' : 'Search & replace'}</button>
                   <label>Motion</label>
                   <select disabled value="automatic"><option value="automatic">Automatic slow pan &amp; zoom</option></select>
-                  <div className="editor-display-toggles">
-                    <label><span>Show scene title</span><input type="checkbox" checked={cfg.sceneTitlesEnabled} onChange={event => setCfg(current => ({ ...current, sceneTitlesEnabled: event.target.checked }))} /></label>
-                    <label><span>Show subtitles</span><input type="checkbox" checked={cfg.subtitlesEnabled} onChange={event => setCfg(current => ({ ...current, subtitlesEnabled: event.target.checked }))} /></label>
-                  </div>
                 </> : <div className="editor-inspector-empty"><p>Generate pictures to edit their timing, search and display settings.</p></div>}
               </aside>
             </div>
@@ -1863,10 +2019,65 @@ export default function Home() {
           <section className="panel">
             <h2 className="step-title">5 · Publish</h2>
             <p className="review-note">{cfg.outputType === 'short' ? '1 vertical video ready to download.' : `1 YouTube video${cfg.extractReels ? ' + 3 extracted Shorts' : ''}.`}</p>
+            <div className="publish-connections">
+              <div className="publish-connections-header">
+                <div>
+                  <strong>Publishing connections</strong>
+                  <span>Tokens are checked before anything is uploaded.</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => call('check-publishing', async () => { await refreshPublishingReadiness('all'); })}
+                  disabled={working || checkingPublishing}>
+                  {checkingPublishing ? 'Checking…' : 'Check again'}
+                </button>
+              </div>
+              <div className="publish-connection-grid">
+                {(['youtube', 'instagram'] as const).map(platform => {
+                  const status = publishingReadiness?.platforms[platform];
+                  const label = platform === 'youtube' ? 'YouTube' : 'Instagram';
+                  return (
+                    <div className={`publish-connection ${status?.valid === true ? 'valid' : status?.valid === false ? 'invalid' : ''}`} key={platform}>
+                      <div className="publish-connection-title">
+                        <strong>{label}</strong>
+                        <span>{status?.valid === true ? 'Connected' : status?.valid === false ? 'Reconnect' : 'Checking'}</span>
+                      </div>
+                      <p>{status?.message ?? 'Checking token status…'}</p>
+                      {status?.tokenExpiresAt && <small>Token expires {formatCredentialDate(status.tokenExpiresAt)}</small>}
+                      {status?.valid === true && !status.tokenExpiresAt && <small>No fixed token expiry</small>}
+                      {status?.dataAccessExpiresAt && <small>Data access expires {formatCredentialDate(status.dataAccessExpiresAt)}</small>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
             {(job?.kind === 'publish' || job?.kind === 'publish-youtube') && <p className="review-note">Uploading to YouTube…</p>}
             {(job?.kind === 'publish' || job?.kind === 'publish-instagram') && <p className="review-note">Publishing to Instagram…</p>}
             {debate.publishing?.status === 'error' && debate.publishing.error && (
               <div className="error">Publishing failed: {debate.publishing.error}</div>
+            )}
+            {authErrorPlatform === 'youtube' && (
+              <div className="publish-recovery">
+                <strong>Reconnect YouTube</strong>
+                <ol>
+                  <li>Open <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noreferrer">Google OAuth Playground</a>.</li>
+                  <li>In Settings, enable “Use your own OAuth credentials” and enter the same client ID and secret used in <code>.env</code>.</li>
+                  <li>Authorize <code>https://www.googleapis.com/auth/youtube.upload</code> with the correct YouTube channel.</li>
+                  <li>Exchange the code, copy the refresh token to <code>YOUTUBE_REFRESH_TOKEN</code>, then restart the app.</li>
+                </ol>
+              </div>
+            )}
+            {authErrorPlatform === 'instagram' && (
+              <div className="publish-recovery">
+                <strong>Reconnect Instagram</strong>
+                <ol>
+                  <li>Open <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer">Meta Graph API Explorer</a>, select your app and generate a token with the existing Instagram publishing permissions.</li>
+                  <li>Open <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noreferrer">Access Token Debugger</a> and extend that token.</li>
+                  <li>Use the extended token in Graph API Explorer and run <code>/me/accounts?fields=id,name,access_token,instagram_business_account</code>.</li>
+                  <li>Copy the correct Page token and Instagram account ID into <code>INSTAGRAM_ACCESS_TOKEN</code> and <code>INSTAGRAM_USER_ID</code>, then restart the app.</li>
+                </ol>
+              </div>
             )}
             {debate.publishing?.youtube?.main && (
               <p><a href={debate.publishing.youtube.main.url} target="_blank" rel="noreferrer">Open YouTube video</a></p>

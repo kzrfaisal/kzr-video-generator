@@ -9,9 +9,7 @@ import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/s
 import { GeneratedMetadataSchema } from '@/src/services/openai/schemas';
 import { generateStructured } from '@/src/services/openai/structuredOutput';
 import { METADATA_PROMPT_VERSION, metadataDeveloperPrompt, metadataUserPrompt } from '@/src/services/openai/prompts';
-
-const METADATA_INPUT_COST_PER_TOKEN  = 0.150 / 1_000_000;
-const METADATA_OUTPUT_COST_PER_TOKEN = 0.600 / 1_000_000;
+import { textCostUsd } from '@/src/services/openai/pricing';
 
 export interface MetadataResult {
   promptTokens: number;
@@ -64,9 +62,12 @@ export async function generateMetadata(
   console.log(`Metadata saved to ${outFile}`);
 
   const usage = generated.usage;
-  const cost =
-    usage.inputTokens * METADATA_INPUT_COST_PER_TOKEN +
-    usage.outputTokens * METADATA_OUTPUT_COST_PER_TOKEN;
+  const cost = textCostUsd({
+    model: config.scriptModel,
+    inputTokens: usage.inputTokens,
+    cachedInputTokens: usage.cachedInputTokens,
+    outputTokens: usage.outputTokens,
+  });
 
   return {
     promptTokens: usage.inputTokens,

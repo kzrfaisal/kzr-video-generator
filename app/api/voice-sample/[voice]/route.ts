@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import OpenAI from 'openai';
 import { isValidVoice, SAMPLE_TEXT } from '@/src/shared/voices';
+import { recordSpeechUsage } from '@/src/services/openai/usageLedger';
 
 export const runtime = 'nodejs';
 
@@ -24,8 +25,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ voice: 
         input: SAMPLE_TEXT,
         response_format: 'mp3',
       });
+      const audio = Buffer.from(await resp.arrayBuffer());
+      recordSpeechUsage({
+        operation: 'voice sample',
+        model: 'tts-1',
+        characters: SAMPLE_TEXT.length,
+      });
       fs.mkdirSync(SAMPLE_DIR, { recursive: true });
-      fs.writeFileSync(file, Buffer.from(await resp.arrayBuffer()));
+      fs.writeFileSync(file, audio);
     } catch (err: any) {
       return new Response(`Could not generate sample: ${err.message}`, { status: 500 });
     }
