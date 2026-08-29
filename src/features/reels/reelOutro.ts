@@ -31,21 +31,23 @@ export const EXPLAINER_OUTRO_TEXT: [string, string, string] = [
  * Generate the outro mp3 for a reel part if it isn't already cached.
  * Returns the absolute path to the cached mp3. Idempotent + safe to call every run.
  */
-export function outroText(partIndex: 0 | 1 | 2, contentMode: ContentMode): string {
+export function outroText(partIndex: number, contentMode: ContentMode): string {
+  const variation = Math.abs(partIndex) % 3;
   return contentMode === 'narrated-explainer'
-    ? EXPLAINER_OUTRO_TEXT[partIndex]
-    : HOST_OUTRO_TEXT[partIndex];
+    ? EXPLAINER_OUTRO_TEXT[variation]
+    : HOST_OUTRO_TEXT[variation];
 }
 
-export async function ensureOutroAudio(partIndex: 0 | 1 | 2, contentMode: ContentMode = 'debate'): Promise<string> {
+export async function ensureOutroAudio(partIndex: number, contentMode: ContentMode = 'debate'): Promise<string> {
   ensureDir(OUTRO_DIR);
+  const variation = Math.abs(partIndex) % 3;
   const prefix = contentMode === 'narrated-explainer' ? 'explainer' : 'host';
-  const mp3File = path.resolve(`${OUTRO_DIR}/${prefix}_outro_part${partIndex + 1}.mp3`);
+  const mp3File = path.resolve(`${OUTRO_DIR}/${prefix}_outro_part${variation + 1}.mp3`);
   if (fs.existsSync(mp3File)) return mp3File;
 
   const voice = config.voices.HOST ?? 'alloy';
   console.log(`Generating cached outro audio: ${mp3File} using ${voice}`);
-  const text = outroText(partIndex, contentMode);
+  const text = outroText(variation, contentMode);
   const response = await client.audio.speech.create({
     model: config.ttsModel as 'tts-1' | 'tts-1-hd',
     voice: voice as 'alloy' | 'echo' | 'ash' | 'onyx',

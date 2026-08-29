@@ -1,10 +1,17 @@
 import fs from 'fs';
-import { ensureDir, parseDebateFile, DebateLine } from '@/src/shared/utils';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import { ensureDir, parseDebateFile, type DebateLine } from '@/src/shared/utils';
 import { outroText } from './reelOutro';
 import { readContentMode, type ContentMode } from '@/src/features/projects/contentMode';
-import { projectPath } from '@/src/shared/filesystem/paths';
+import { projectPath, publishMetadata } from '@/src/shared/filesystem/paths';
+import { readProjectDocument, saveProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
+import { applyExactProjectTitle, metadataToMarkdown } from '@/src/domain/projects/metadata';
 
-type Block = { speaker: string; texts: string[]; origIndices: number[] };
+// The longest cached outro is just over three seconds. Keeping source narration
+// below 48.5 seconds lets the final render fit safely inside the 50-53 second
+// product target. The renderer pads every finished Reel to exactly 52 seconds.
+const MAX_REEL_SOURCE_SECONDS = 48.5;
 
 export type ExtractedPart = {
   name: string;
@@ -13,85 +20,113 @@ export type ExtractedPart = {
   contentMode?: ContentMode;
 };
 
-function explainerParts(debateName: string, lines: DebateLine[]): ExtractedPart[] {
-  if (lines.length < 3) throw new Error('The explainer needs at least three narration lines to create shorts.');
-  const cuts = [0, Math.round(lines.length / 3), Math.round(lines.length * 2 / 3), lines.length];
-  const reelsDir = 'output/debates/reels';
-  ensureDir(reelsDir);
-  return ([0, 1, 2] as const).map(partIndex => {
-    const start = cuts[partIndex];
-    const end = cuts[partIndex + 1];
-    const selected = lines.slice(start, end);
-    const name = `${debateName}_part${partIndex + 1}`;
-    const filePath = `${reelsDir}/${name}.txt`;
-    const script = selected.map(line => `HOST|${line.text}`).join('\n')
-      + `\n\nHOST|${outroText(partIndex, 'narrated-explainer')}\n`;
-    fs.writeFileSync(filePath, script, 'utf-8');
-    console.log(`Wrote: ${filePath}`);
-    return {
-      name,
-      filePath,
-      origLineIndices: selected.map((_, index) => start + index),
-      contentMode: 'narrated-explainer' as const,
-    };
-  });
-}
+type IndexedLine = { line: DebateLine; originalIndex: number; duration: number };
 
-function groupBlocks(lines: DebateLine[]): Block[] {
-  const blocks: Block[] = [];
-  lines.forEach((line, idx) => {
-    const last = blocks[blocks.length - 1];
-    if (last && last.speaker === line.speaker) {
-      last.texts.push(line.text);
-      last.origIndices.push(idx);
-    } else {
-      blocks.push({ speaker: line.speaker, texts: [line.text], origIndices: [idx] });
+function audioDurations(debateName: string, lines: DebateLine[]): number[] {
+  const dir = `output/audios/${debateName}`;
+  const files = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter(file => file.endsWith('.mp3')).sort()
+    : [];
+
+  return lines.map((line, index) => {
+    const file = files[index];
+    if (file) {
+      const result = spawnSync('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        path.join(dir, file),
+      ], { encoding: 'utf-8' });
+      const duration = Number(result.stdout.trim());
+      if (result.status === 0 && Number.isFinite(duration) && duration > 0) return duration;
     }
-  });
-  return blocks;
-}
 
-function blocksToScript(blocks: Block[]): string {
-  return blocks
-    .map(b => b.texts.map(t => `${b.speaker}|${t}`).join('\n'))
-    .join('\n\n') + '\n';
-}
-
-function balancedDebateParts(debateName: string, lines: DebateLine[], contentMode: ContentMode): ExtractedPart[] {
-  if (lines.length < 3) throw new Error('The debate needs at least three subtitle lines to create reels.');
-  const cuts = [0, Math.round(lines.length / 3), Math.round(lines.length * 2 / 3), lines.length];
-  const reelsDir = 'output/debates/reels';
-  ensureDir(reelsDir);
-  return ([0, 1, 2] as const).map(partIndex => {
-    const start = cuts[partIndex];
-    const end = cuts[partIndex + 1];
-    const selected = lines.slice(start, end);
-    const name = `${debateName}_part${partIndex + 1}`;
-    const filePath = `${reelsDir}/${name}.txt`;
-    const script = selected.map(line => `${line.speaker}|${line.text}`).join('\n')
-      + `\n\nHOST|${outroText(partIndex, contentMode)}\n`;
-    fs.writeFileSync(filePath, script, 'utf-8');
-    console.log(`Wrote: ${filePath}`);
-    return {
-      name,
-      filePath,
-      origLineIndices: selected.map((_, index) => start + index),
-      contentMode,
-    };
+    const words = line.text.trim().split(/\s+/).filter(Boolean).length;
+    return words / 2.4 + 0.25;
   });
 }
 
-/**
- * Split a long-form debate into 3 reel-sized parts based on the prompt's
- * HOST-A-HOST-B-HOST-A-HOST-B-HOST-A-HOST-B-[HOST] structure:
- *   Part 1 (opening)   = blocks 0..4   (HOST intro, A opening, HOST react, B opening)
- *   Part 2 (rebuttals) = blocks 4..8   (HOST transition, A rebuttal, HOST invite, B rebuttal)
- *   Part 3 (closing)   = blocks 8..end (HOST transition, A closing, HOST invite, B closing, optional HOST summary)
- *
- * Writes each part to output/debates/reels/<debateName>_partN.txt and returns
- * metadata (including the original line indices each part spans) so callers can
- * copy the matching pre-rendered audio files without re-running TTS.
- */
+/** Split all narration into ordered, balanced groups without dropping lines. */
+function durationBalancedGroups(lines: DebateLine[], durations: number[]): IndexedLine[][] {
+  const indexed = lines.map((line, originalIndex) => ({ line, originalIndex, duration: durations[originalIndex] }));
+  const total = durations.reduce((sum, duration) => sum + duration, 0);
+  const groupCount = Math.max(1, Math.ceil(total / MAX_REEL_SOURCE_SECONDS));
+  const groups: IndexedLine[][] = [];
+  let cursor = 0;
+  let remainingDuration = total;
+
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex++) {
+    const groupsLeft = groupCount - groupIndex;
+    const target = Math.min(MAX_REEL_SOURCE_SECONDS, remainingDuration / groupsLeft);
+    const group: IndexedLine[] = [];
+    let duration = 0;
+
+    while (cursor < indexed.length) {
+      const entry = indexed[cursor];
+      const linesAfterCandidate = indexed.length - (cursor + 1);
+      if (linesAfterCandidate < groupsLeft - 1) break;
+      const nextDuration = duration + entry.duration;
+      if (group.length > 0 && nextDuration > MAX_REEL_SOURCE_SECONDS) break;
+      if (
+        group.length > 0
+        && duration >= target
+        && Math.abs(duration - target) <= Math.abs(nextDuration - target)
+      ) break;
+      group.push(entry);
+      duration = nextDuration;
+      cursor++;
+    }
+
+    if (group.length === 0 && cursor < indexed.length) {
+      group.push(indexed[cursor]);
+      duration = indexed[cursor].duration;
+      cursor++;
+    }
+    groups.push(group);
+    remainingDuration -= duration;
+  }
+
+  while (cursor < indexed.length) {
+    const group: IndexedLine[] = [];
+    let duration = 0;
+    while (cursor < indexed.length) {
+      const entry = indexed[cursor];
+      if (group.length > 0 && duration + entry.duration > MAX_REEL_SOURCE_SECONDS) break;
+      group.push(entry);
+      duration += entry.duration;
+      cursor++;
+    }
+    groups.push(group);
+  }
+  return groups.filter(group => group.length > 0);
+}
+
+function removeStalePartScripts(debateName: string, reelsDir: string): void {
+  const pattern = new RegExp(`^${debateName}_part\\d+\\.txt$`);
+  for (const file of fs.readdirSync(reelsDir)) {
+    if (pattern.test(file)) fs.unlinkSync(path.join(reelsDir, file));
+  }
+}
+
+function syncReelMetadata(debateName: string, groups: IndexedLine[][]): void {
+  const project = readProjectDocument(debateName);
+  if (!project.metadata) return;
+  const existing = new Map(project.metadata.reels.map(reel => [reel.part, reel.caption]));
+  const hashtags = project.metadata.youtube.hashtags.slice(0, 5).join(' ');
+  project.metadata = applyExactProjectTitle({
+    ...project.metadata,
+    reels: groups.map((group, index) => ({
+      part: index + 1,
+      caption: existing.get(index + 1)
+        || [`Part ${index + 1} - ${project.title}`, group[0]?.line.text, hashtags].filter(Boolean).join('\n'),
+    })),
+  }, project.title);
+  saveProjectDocument(project);
+  ensureDir(path.dirname(publishMetadata(debateName)));
+  fs.writeFileSync(publishMetadata(debateName), metadataToMarkdown(project.metadata), 'utf-8');
+}
+
+/** Create as many 52-second Reels as the source narration requires. */
 export function extract(debateName: string): ExtractedPart[] {
   const inputFile = `output/debates/${debateName}.txt`;
   if (!fs.existsSync(projectPath(debateName)) && !fs.existsSync(inputFile)) {
@@ -99,42 +134,28 @@ export function extract(debateName: string): ExtractedPart[] {
   }
 
   const lines = parseDebateFile(inputFile);
+  if (!lines.length) throw new Error('The script has no narration to extract.');
   const contentMode = readContentMode(debateName);
-  if (contentMode === 'narrated-explainer') return explainerParts(debateName, lines);
-  const blocks = groupBlocks(lines);
-
-  const expected = ['HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B', 'HOST', 'A', 'HOST', 'B'];
-  if (blocks.length < expected.length) {
-    console.warn(`Debate has ${blocks.length} speaker blocks; creating three balanced reels instead.`);
-    return balancedDebateParts(debateName, lines, contentMode);
-  }
-  for (let i = 0; i < expected.length; i++) {
-    if (blocks[i].speaker !== expected[i]) {
-      console.warn(`Debate speaker pattern differs at block ${i}; creating three balanced reels instead.`);
-      return balancedDebateParts(debateName, lines, contentMode);
-    }
-  }
-
-  const partSpecs: [string, Block[]][] = [
-    [`${debateName}_part1`, blocks.slice(0, 4)],
-    [`${debateName}_part2`, blocks.slice(4, 8)],
-    [`${debateName}_part3`, blocks.slice(8)],
-  ];
-
+  const groups = durationBalancedGroups(lines, audioDurations(debateName, lines));
   const reelsDir = 'output/debates/reels';
   ensureDir(reelsDir);
+  removeStalePartScripts(debateName, reelsDir);
 
-  const parts: ExtractedPart[] = partSpecs.map(([name, partBlocks], partIndex) => {
+  const parts = groups.map((group, partIndex) => {
+    const name = `${debateName}_part${partIndex + 1}`;
     const filePath = `${reelsDir}/${name}.txt`;
-    // Append a HOST outro line so each reel ends with an engagement prompt.
-    // Its audio is supplied separately by ensureOutroAudio(partIndex) at reel-build time.
-    const script = blocksToScript(partBlocks) + `HOST|${outroText(partIndex as 0 | 1 | 2, 'debate')}\n`;
+    const script = group.map(({ line }) => `${line.speaker}|${line.text}`).join('\n')
+      + `\n\nHOST|${outroText(partIndex, contentMode)}\n`;
     fs.writeFileSync(filePath, script, 'utf-8');
     console.log(`Wrote: ${filePath}`);
-    const origLineIndices = partBlocks.flatMap(b => b.origIndices);
-    return { name, filePath, origLineIndices, contentMode };
+    return {
+      name,
+      filePath,
+      origLineIndices: group.map(({ originalIndex }) => originalIndex),
+      contentMode,
+    };
   });
-
+  syncReelMetadata(debateName, groups);
   return parts;
 }
 

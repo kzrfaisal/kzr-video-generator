@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { runStage } from '@/src/infrastructure/process/runStage';
 import { projectPath } from '@/src/shared/filesystem/paths';
-import { findMainVideo, findReelVideos, hasAudio, hasThumbnail } from '@/src/features/rendering/videoFiles';
+import { expectedReelCount, findMainVideo, findReelVideos, hasAudio, hasThumbnail } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 import { markStageCompleted, markStageRunning } from '@/src/infrastructure/storage/localPipelineStore';
 
@@ -42,6 +42,7 @@ export async function GET() {
           audioExists: hasAudio(debateName),
           videoExists: findMainVideo(debateName) !== null,
           reelsCount: findReelVideos(debateName).length,
+          reelsTargetCount: expectedReelCount(debateName),
         }];
       } catch {
         return [];

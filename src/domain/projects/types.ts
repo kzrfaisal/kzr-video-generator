@@ -34,7 +34,7 @@ export interface ProjectMetadata {
     hashtags: string[];
   };
   reels: Array<{
-    part: 1 | 2 | 3;
+    part: number;
     caption: string;
   }>;
   thumbnailHook: string;

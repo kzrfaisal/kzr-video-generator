@@ -31,14 +31,13 @@ export function parseMetadataMarkdown(markdown: string): ProjectMetadata {
   const youtubeDescription = metadataSection(markdown, 'YouTube Description');
   const hashtagText = metadataSection(markdown, 'Hashtags');
   const thumbnailHook = metadataSection(markdown, 'Thumbnail Hook');
-  const captions = [
-    metadataSection(markdown, 'Reel 1 — Opening Caption') || metadataSection(markdown, 'Reel 1 — Hook Caption'),
-    metadataSection(markdown, 'Reel 2 — Rebuttals Caption') || metadataSection(markdown, 'Reel 2 — Key Insight Caption'),
-    metadataSection(markdown, 'Reel 3 — Closing Caption') || metadataSection(markdown, 'Reel 3 — Takeaway Caption'),
-  ];
+  const reelHeadings = [...markdown.matchAll(/^## Reel (\d+) — .*Caption\s*$/gm)]
+    .map(match => ({ part: Number(match[1]), heading: match[0].slice(3) }))
+    .sort((a, b) => a.part - b.part);
+  const captions = reelHeadings.map(({ part, heading }) => ({ part, caption: metadataSection(markdown, heading) }));
 
-  if (!youtubeTitle || !youtubeDescription || !thumbnailHook || captions.some(caption => !caption)) {
-    throw new Error('Metadata is incomplete. It needs a title, description, thumbnail hook, and three reel captions.');
+  if (!youtubeTitle || !youtubeDescription || !thumbnailHook || !captions.length || captions.some(item => !item.caption)) {
+    throw new Error('Metadata is incomplete. It needs a title, description, thumbnail hook, and Reel captions.');
   }
 
   return {
@@ -47,24 +46,18 @@ export function parseMetadataMarkdown(markdown: string): ProjectMetadata {
       description: youtubeDescription,
       hashtags: hashtagText.match(/#[\p{L}\p{N}_]+/gu)?.map(tag => tag.toLowerCase()) ?? [],
     },
-    reels: captions.map((caption, index) => ({
-      part: (index + 1) as 1 | 2 | 3,
-      caption,
-    })),
+    reels: captions,
     thumbnailHook,
   };
 }
 
 export function metadataToMarkdown(metadata: ProjectMetadata): string {
-  const captions = new Map(metadata.reels.map(reel => [reel.part, reel.caption]));
   return [
     '## YouTube Title', metadata.youtube.title,
     '', '## YouTube Description', metadata.youtube.description,
     '', '## Hashtags', metadata.youtube.hashtags.join(' '),
     '', '## Thumbnail Hook', metadata.thumbnailHook,
-    '', '## Reel 1 — Hook Caption', captions.get(1) ?? '',
-    '', '## Reel 2 — Key Insight Caption', captions.get(2) ?? '',
-    '', '## Reel 3 — Takeaway Caption', captions.get(3) ?? '',
+    ...metadata.reels.flatMap(reel => ['', `## Reel ${reel.part} — Caption`, reel.caption]),
     '',
   ].join('\n');
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { createJob, hasActiveJob, startJob, type JobKind } from '@/src/infrastructure/jobs/jobManager';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
-import { findMainVideo, findReelVideos } from '@/src/features/rendering/videoFiles';
+import { expectedReelCount, findMainVideo, findReelVideos } from '@/src/features/rendering/videoFiles';
 import { publishMetadata } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
@@ -18,8 +18,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ name: s
   if (!isValidDebateName(name)) {
     return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
   }
-  if (!fs.existsSync(publishMetadata(name)) || !findMainVideo(name) || findReelVideos(name).length !== 3) {
-    return NextResponse.json({ error: 'Generate metadata, the main video, and all 3 reels first.' }, { status: 409 });
+  const reelTarget = expectedReelCount(name);
+  if (!fs.existsSync(publishMetadata(name)) || !findMainVideo(name) || reelTarget < 1 || findReelVideos(name).length !== reelTarget) {
+    return NextResponse.json({ error: 'Generate metadata, the main video, and all planned Reels first.' }, { status: 409 });
   }
   if (hasActiveJob()) {
     return NextResponse.json({ error: 'Another background job is already running.' }, { status: 409 });

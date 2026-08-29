@@ -6,7 +6,7 @@ import { reelsPartsPath } from '@/src/shared/filesystem/paths';
 
 export const runtime = 'nodejs';
 
-// POST /api/debate/<name>/reels — build the 3 reel videos from the extracted parts.
+// POST /api/debate/<name>/reels — build all duration-balanced Reel videos.
 export async function POST(_req: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   if (!isValidDebateName(name)) {

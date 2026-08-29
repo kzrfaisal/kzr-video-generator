@@ -134,7 +134,7 @@ interface UsageSummary {
 
 interface ProjectMetadata {
   youtube: { title: string; description: string; hashtags: string[] };
-  reels: Array<{ part: 1 | 2 | 3; caption: string }>;
+  reels: Array<{ part: number; caption: string }>;
   thumbnailHook: string;
 }
 
@@ -152,6 +152,7 @@ interface Debate {
   videoExists: boolean;
   reelScripts: ReelScript[];
   reelsCount: number;
+  reelsTargetCount: number;
   publishing: PublishState | null;
 }
 
@@ -160,7 +161,6 @@ type Theme = 'light' | 'dark';
 type WorkspaceSection = 'overview' | 'storyboard' | 'metadata' | 'video' | 'shorts' | 'publish';
 type HomeView = 'projects' | 'create';
 type ProjectFilter = 'all' | 'draft' | 'generating' | 'ready';
-type ProjectLayout = 'grid' | 'list';
 type JobKind = 'visuals' | 'audio' | 'video' | 'reels' | 'publish' | 'publish-youtube' | 'publish-instagram';
 interface JobView { id: string; kind: JobKind; stage: string; status: string; attempt?: number; logs?: string[]; error?: string; }
 
@@ -174,6 +174,7 @@ interface ProjectSummary {
   audioExists: boolean;
   videoExists: boolean;
   reelsCount: number;
+  reelsTargetCount: number;
 }
 
 // Reviewed generation pauses after the script, metadata, and reel scripts.
@@ -335,7 +336,6 @@ export default function Home() {
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('overview');
   const [homeView, setHomeView] = useState<HomeView>('projects');
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>('all');
-  const [projectLayout, setProjectLayout] = useState<ProjectLayout>('grid');
   const [projectSearch, setProjectSearch] = useState('');
   const [selectedSubtitleId, setSelectedSubtitleId] = useState<string | null>(null);
   const [selectedVisualId, setSelectedVisualId] = useState<string | null>(null);
@@ -457,6 +457,7 @@ export default function Home() {
       videoExists: d.videoExists ?? false,
       reelScripts: d.reelScripts ?? [],
       reelsCount: d.reelsCount ?? 0,
+      reelsTargetCount: d.reelsTargetCount ?? 0,
       publishing: d.publishing ?? null,
     };
     setDebate(norm);
@@ -642,7 +643,7 @@ export default function Home() {
   const rawExtract = async (name = debate!.debateName) => {
     const data = await jsonOrThrow(await fetch(`/api/debate/${name}/extract-reels`, { method: 'POST' }));
     setEditReels(data.parts);
-    setDebate(d => (d ? { ...d, reelScripts: data.parts } : d));
+    setDebate(d => (d ? { ...d, reelScripts: data.parts, reelsTargetCount: data.parts.length, reelsCount: 0 } : d));
   };
   const rawReels = async (name = debate!.debateName) => startJobAndWait(`/api/debate/${name}/reels`, 'reels', name);
   const refreshPublishingReadiness = async (target: PublishTarget = 'all') => {
@@ -958,7 +959,7 @@ export default function Home() {
     } : current);
   }
 
-  function updateReelCaption(part: 1 | 2 | 3, caption: string) {
+  function updateReelCaption(part: number, caption: string) {
     setEditMetadataFields(current => current ? {
       ...current,
       reels: current.reels.map(reel => reel.part === part ? { ...reel, caption } : reel),
@@ -1121,13 +1122,15 @@ export default function Home() {
   const working = busy !== '' || job !== null;
   const name = debate?.debateName;
   const cs = cfg.customSubtitle ?? DEFAULT_CUSTOM;
+  const plannedReels = debate?.reelsTargetCount ?? 0;
+  const reelsReady = !!debate && plannedReels > 0 && debate.reelsCount === plannedReels;
   const youtubePublished = !!debate?.publishing?.youtube?.main
-    && (!cfg.extractReels || (debate.publishing.youtube.shorts?.length ?? 0) === 3);
-  const instagramPublished = (debate?.publishing?.instagram?.length ?? 0) === 3;
+    && (!cfg.extractReels || (debate.publishing.youtube.shorts?.length ?? 0) === plannedReels);
+  const instagramPublished = plannedReels > 0 && (debate?.publishing?.instagram?.length ?? 0) === plannedReels;
   const publishError = debate?.publishing?.error || error;
   const authErrorPlatform = publishingAuthError(publishError);
   const completePackReady = !!debate?.videoExists
-    && (cfg.outputType === 'short' || debate.reelsCount === 3);
+    && (cfg.outputType === 'short' || reelsReady);
   // A render running on some OTHER debate (our own render is already shown via `job`).
   const renderElsewhere = !!globalBusy && globalBusy.debateName !== name;
   const visualsReady = cfg.visualMode !== 'infographic'
@@ -1157,9 +1160,10 @@ export default function Home() {
   const creating = !debate && homeView === 'create';
   const editingProject = !!debate;
   const editingScript = !!debate && workspaceSection === 'storyboard';
+  const projectsHome = !debate && homeView === 'projects';
 
   return (
-    <main className={`app-shell theme-${theme} ${creating ? 'creation-mode' : ''} ${editingProject ? 'project-mode' : ''} ${editingScript ? 'script-mode' : ''}`}>
+    <main className={`app-shell theme-${theme} ${projectsHome ? 'projects-mode' : ''} ${creating ? 'creation-mode' : ''} ${editingProject ? 'project-mode' : ''} ${editingScript ? 'script-mode' : ''}`}>
       <aside className="usage-hud" aria-label="OpenAI usage and estimated cost">
         <div>
           <span>Total</span>
@@ -1175,16 +1179,20 @@ export default function Home() {
       {!creating && !editingProject && <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark"><Icon name="play" size={15} /></span>
-          <span><b>KZR</b> Creator Studio</span>
+          <span><b>KZR</b><small>Creator Studio</small></span>
         </div>
+        <span className="sidebar-label">Workspace</span>
         <nav className="primary-nav" aria-label="Main navigation">
           <button className={!debate && homeView === 'projects' ? 'nav-item active' : 'nav-item'} onClick={showProjects} disabled={working}>
             <Icon name="folder" size={17} /> Projects
           </button>
+          <button className="nav-item" onClick={startNew} disabled={working}>
+            <Icon name="plus" size={17} /> New video
+          </button>
         </nav>
         <div className="sidebar-footer">
           <span className="status-dot" /> Local workspace
-          <small>Your files stay on this computer</small>
+          <small>Private on this computer</small>
         </div>
       </aside>}
       <div className={`workspace ${creating ? 'creation-workspace' : ''} ${editingProject ? 'project-workspace' : ''} ${editingScript ? 'script-workspace' : ''}`}>
@@ -1256,39 +1264,39 @@ export default function Home() {
         <section className="projects-screen" id="project-library">
           <header className="projects-header">
             <div>
-              <h1>Projects</h1>
-              <p>Create, manage and export your videos</p>
+              <span className="projects-eyebrow">Creative workspace</span>
+              <h1>Your projects</h1>
+              <p>Continue creating, review a draft, or start something new.</p>
             </div>
             <div className="projects-toolbar">
               <label className="project-search">
                 <Icon name="search" size={17} />
                 <input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects…" aria-label="Search projects" />
               </label>
-              <div className="layout-toggle" aria-label="Project layout">
-                <button type="button" className={projectLayout === 'grid' ? 'active' : ''} onClick={() => setProjectLayout('grid')} title="Grid view" aria-label="Grid view"><Icon name="grid" size={17} /></button>
-                <button type="button" className={projectLayout === 'list' ? 'active' : ''} onClick={() => setProjectLayout('list')} title="List view" aria-label="List view"><Icon name="list" size={17} /></button>
-              </div>
-              <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
-              <button className="projects-new-button" type="button" onClick={startNew}><Icon name="plus" size={16} /> New project</button>
+              <button className="projects-new-button" type="button" onClick={startNew}><Icon name="plus" size={17} /> New video</button>
             </div>
           </header>
 
-          <nav className="project-filters" aria-label="Filter projects">
-            {([
-              ['all', 'All'],
-              ['draft', 'Drafts'],
-              ['generating', 'Generating'],
-              ['ready', 'Ready'],
-            ] as Array<[ProjectFilter, string]>).map(([filter, label]) => (
-              <button type="button" key={filter} className={projectFilter === filter ? 'active' : ''} onClick={() => setProjectFilter(filter)}>{label}</button>
-            ))}
-          </nav>
+          <div className="projects-control-bar">
+            <nav className="project-filters" aria-label="Filter projects">
+              {([
+                ['all', 'All'],
+                ['draft', 'Drafts'],
+                ['generating', 'Generating'],
+                ['ready', 'Ready'],
+              ] as Array<[ProjectFilter, string]>).map(([filter, label]) => {
+                const count = filter === 'all' ? projects.length : projects.filter(project => statusForProject(project) === filter).length;
+                return <button type="button" key={filter} className={projectFilter === filter ? 'active' : ''} onClick={() => setProjectFilter(filter)}>{label}<span>{count}</span></button>;
+              })}
+            </nav>
+            <span className="projects-view-label"><Icon name="grid" size={15} /> Grid view</span>
+          </div>
 
           {filteredProjects.length === 0 && projectSearch.trim() && (
             <div className="projects-empty"><Icon name="search" size={22} /><strong>No matching projects</strong><p>Try another title or clear the current filter.</p></div>
           )}
 
-          <div className={`project-library-grid ${projectLayout}`}>
+          <div className="project-library-grid">
             {filteredProjects.map(project => {
               const status = statusForProject(project);
               return (
@@ -1298,24 +1306,26 @@ export default function Home() {
                       ? <img src={`/api/debate/${project.debateName}/thumbnail?t=${project.updatedAt}`} alt="" />
                       : <span className="project-placeholder"><Icon name={project.contentMode === 'debate' ? 'users' : 'play'} size={28} /></span>}
                     <span className="project-format-badge"><Icon name={project.contentMode === 'debate' ? 'users' : 'play'} size={13} />{project.contentMode === 'debate' ? 'Debate' : 'Explainer'}</span>
-                  </span>
-                  <span className="library-project-body">
-                    <strong>{project.topic}</strong>
-                    <span className="library-project-meta"><span>{project.scenesCount} scenes</span><span>•</span><span>{formatProjectDate(project.updatedAt)}</span></span>
                     <span className={`project-status-pill ${status}`}>
                       {status === 'generating' && <span className="mini-spinner" />}
                       {status === 'ready' && <Icon name="check" size={13} />}
                       {status === 'generating' ? 'Generating' : status === 'ready' ? 'Ready' : 'Draft'}
                     </span>
                   </span>
+                  <span className="library-project-body">
+                    <small>{project.debateName}</small>
+                    <strong>{project.topic}</strong>
+                    <span className="library-project-meta"><span>{project.scenesCount} scenes</span><span>{project.reelsCount} reels</span><span>{formatProjectDate(project.updatedAt)}</span></span>
+                    <span className="project-open"><span>Open project</span><Icon name="arrow-right" size={15} /></span>
+                  </span>
                 </button>
               );
             })}
             {projectFilter === 'all' && !projectSearch.trim() && (
               <button type="button" className="create-project-card" onClick={startNew}>
-                <span className="create-project-icon"><Icon name="plus" size={28} /></span>
-                <strong>Create a new video</strong>
-                <span>Start from scratch and turn an idea into a finished video.</span>
+                <span className="create-project-icon"><Icon name="plus" size={24} /></span>
+                <strong>Start a new video</strong>
+                <span>Turn one idea into a finished video and ready-to-share reels.</span>
               </button>
             )}
           </div>
@@ -1397,7 +1407,7 @@ export default function Home() {
               {cfg.outputType === 'youtube' && (
                 <div className="extract-reels-choice included-output">
                   <span className="included-check"><Icon name="check" size={13} /></span>
-                  <span><strong>Three vertical reels included</strong><small>Generate all creates the main video and three ready-to-share reels.</small></span>
+                  <span><strong>Vertical reels included</strong><small>The full narration is split into as many 52-second reels as needed.</small></span>
                 </div>
               )}
             </section>
@@ -1415,7 +1425,7 @@ export default function Home() {
             <div className="creation-final-actions">
               <div className="creation-buttons">
                 <button type="button" className="next-step-button" onClick={generateNextStep} disabled={working || renderElsewhere}>{busy === 'script' ? 'Generating script…' : 'Next step'}</button>
-                <button type="button" className="generate-all-button" onClick={generateAllVideos} disabled={working || renderElsewhere}>{busy === 'auto' ? 'Creating complete pack…' : <>{cfg.outputType === 'youtube' ? 'Generate video + 3 reels' : 'Generate short'} <Icon name="sparkles" size={17} /></>}</button>
+                <button type="button" className="generate-all-button" onClick={generateAllVideos} disabled={working || renderElsewhere}>{busy === 'auto' ? 'Creating complete pack…' : <>{cfg.outputType === 'youtube' ? 'Generate video + reels' : 'Generate short'} <Icon name="sparkles" size={17} /></>}</button>
               </div>
               <small>Generate all skips review and completes every remaining step automatically.</small>
             </div>
@@ -1464,7 +1474,7 @@ export default function Home() {
                 {section === 'storyboard' && <span className="tab-status complete" />}
                 {section === 'metadata' && <span className={`tab-status ${debate.metadata ? 'complete' : ''}`} />}
                 {section === 'video' && <span className={`tab-status ${debate.videoExists ? 'complete' : ''}`} />}
-                {section === 'shorts' && <span className={`tab-status ${debate.reelsCount === 3 ? 'complete' : ''}`} />}
+                {section === 'shorts' && <span className={`tab-status ${reelsReady ? 'complete' : ''}`} />}
               </button>
             ))}
           </nav>
@@ -1473,7 +1483,7 @@ export default function Home() {
             <div className="status-card complete"><span>Script</span><strong>Ready</strong></div>
             <div className={`status-card ${debate.metadata ? 'complete' : ''}`}><span>Metadata</span><strong>{debate.metadata ? 'Ready' : 'Pending'}</strong></div>
             <div className={`status-card ${debate.videoExists ? 'complete' : ''}`}><span>Main video</span><strong>{debate.videoExists ? 'Ready' : 'Pending'}</strong></div>
-            <div className={`status-card ${debate.reelsCount === 3 ? 'complete' : ''}`}><span>Shorts</span><strong>{debate.reelsCount}/3</strong></div>
+            <div className={`status-card ${reelsReady ? 'complete' : ''}`}><span>Reels</span><strong>{debate.reelsCount}/{plannedReels || '—'}</strong></div>
             {cfg.visualMode === 'infographic' && (
               <div className={`status-card ${visualScenes.length > 0 && visualScenes.every(scene => scene.imagePath) ? 'complete' : ''}`}>
                 <span>Visual scenes</span>
@@ -1487,7 +1497,7 @@ export default function Home() {
               <div className="completion-mark"><Icon name="check" size={24} /></div>
               <div className="completion-copy">
                 <span>Generation complete</span>
-                <strong>{cfg.outputType === 'youtube' ? 'Your video and three reels are ready' : 'Your vertical video is ready'}</strong>
+                <strong>{cfg.outputType === 'youtube' ? `Your video and ${plannedReels} reels are ready` : 'Your vertical video is ready'}</strong>
                 <p>Download the complete pack or continue to publishing.</p>
               </div>
               <div className="completion-summary">
@@ -1504,7 +1514,7 @@ export default function Home() {
 
           {workspaceSection === 'overview' && !completePackReady && (debate.videoExists || debate.reelsCount > 0) && (
             <section className="download-panel">
-              <div><strong>Generation is partially complete</strong><p>Open the editor to finish the main video and all three reels.</p></div>
+              <div><strong>Generation is partially complete</strong><p>Open the editor to finish the main video and all planned reels.</p></div>
               <button type="button" onClick={() => setWorkspaceSection('storyboard')}>Continue in editor</button>
             </section>
           )}
@@ -1520,7 +1530,7 @@ export default function Home() {
               <div className="editor-toolbar-status">
                 {sceneEditsChanged ? <span className="unsaved-indicator">Unsaved script</span> : <span className="saved-indicator"><Icon name="check" size={13} /> Saved</span>}
                 <button type="button" className="btn-secondary" onClick={saveScenes} disabled={working || !sceneEditsChanged || hasInvalidScenes}>{busy === 'save-scenes' ? 'Saving…' : 'Save script'}</button>
-                <button type="button" onClick={generateAllFromScript} disabled={working || renderElsewhere || hasInvalidScenes}>{busy === 'auto-from-script' ? 'Creating complete pack…' : cfg.outputType === 'youtube' ? 'Generate video + 3 reels' : 'Generate short'}</button>
+                <button type="button" onClick={generateAllFromScript} disabled={working || renderElsewhere || hasInvalidScenes}>{busy === 'auto-from-script' ? 'Creating complete pack…' : cfg.outputType === 'youtube' ? 'Generate video + reels' : 'Generate short'}</button>
               </div>
             </header>
 
@@ -1698,7 +1708,7 @@ export default function Home() {
                   <button className="btn-secondary" onClick={generateMetadata} disabled={working}>
                     {busy === 'metadata' ? 'Regenerating…' : 'Regenerate'}
                   </button>
-                  {debate.videoExists && debate.reelsCount === 3 && (
+                  {debate.videoExists && reelsReady && (
                     <button onClick={continueAfterMetadata} disabled={working || renderElsewhere || metadataInvalid}>
                       Save &amp; continue to publish
                     </button>
@@ -2096,11 +2106,11 @@ export default function Home() {
             ))}
             <div className="row">
               <button onClick={publishYouTube}
-                      disabled={working || renderElsewhere || !debate.videoExists || (cfg.extractReels && debate.reelsCount !== 3) || youtubePublished}>
+                      disabled={working || renderElsewhere || !debate.videoExists || (cfg.extractReels && !reelsReady) || youtubePublished}>
                 {job?.kind === 'publish-youtube' ? 'Publishing YouTube…' : youtubePublished ? 'YouTube published' : 'Publish to YouTube'}
               </button>
               <button onClick={publishInstagram}
-                      disabled={working || renderElsewhere || debate.reelsCount !== 3 || instagramPublished}>
+                      disabled={working || renderElsewhere || !reelsReady || instagramPublished}>
                 {job?.kind === 'publish-instagram'
                   ? 'Publishing Instagram…'
                   : instagramPublished

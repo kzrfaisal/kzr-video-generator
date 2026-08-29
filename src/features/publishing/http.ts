@@ -5,7 +5,15 @@ export async function apiError(response: Response, label: string): Promise<Error
     const parsed = JSON.parse(body);
     detail = parsed.error?.message ?? parsed.error_description ?? parsed.message ?? body;
   } catch { /* keep the response text */ }
-  return new Error(`${label} failed (${response.status}): ${detail || response.statusText}`);
+  const requestId = response.headers.get('x-fb-request-id');
+  const traceId = response.headers.get('x-fb-trace-id');
+  const diagnostics = [
+    requestId ? `request ${requestId}` : null,
+    traceId ? `trace ${traceId}` : null,
+  ].filter(Boolean).join(', ');
+  return new Error(
+    `${label} failed (${response.status}): ${detail || response.statusText}${diagnostics ? ` [Meta ${diagnostics}]` : ''}`,
+  );
 }
 
 export function requireEnv(names: string[]): Record<string, string> {

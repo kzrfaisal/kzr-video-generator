@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { publishDir, publishThumbnail } from '@/src/shared/filesystem/paths';
+import { publishDir, publishThumbnail, reelsPartsPath } from '@/src/shared/filesystem/paths';
 
 /** Whether the thumbnail JPG has been rendered. */
 export function hasThumbnail(name: string): boolean {
@@ -30,6 +30,18 @@ export function invalidateAudioManifest(name: string): void {
   }
 }
 
+/** Number of duration-balanced Reels planned by the latest extraction. */
+export function expectedReelCount(name: string): number {
+  const file = reelsPartsPath(name);
+  if (!fs.existsSync(file)) return 0;
+  try {
+    const parts = JSON.parse(fs.readFileSync(file, 'utf-8')) as unknown;
+    return Array.isArray(parts) ? parts.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Newest main (landscape) video, or null if none rendered yet. */
 export function findMainVideo(debateName: string): string | null {
   const dir = publishDir(debateName);
@@ -45,9 +57,17 @@ export function findReelVideos(debateName: string): string[] {
   const dir = publishDir(debateName);
   if (!fs.existsSync(dir)) return [];
   const newestByPart = new Map<string, string>();
+  const expected = expectedReelCount(debateName);
+  const partsFile = reelsPartsPath(debateName);
+  const planUpdatedAt = fs.existsSync(partsFile) ? fs.statSync(partsFile).mtimeMs : 0;
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.mp4')).sort()) {
     const m = f.match(new RegExp(`^${debateName}_part(\\d+)_`));
-    if (m) newestByPart.set(m[1], f);
+    const fullPath = path.join(dir, f);
+    if (
+      m
+      && (!expected || Number(m[1]) <= expected)
+      && fs.statSync(fullPath).mtimeMs >= planUpdatedAt
+    ) newestByPart.set(m[1], f);
   }
   return [...newestByPart.keys()].sort().map(k => path.join(dir, newestByPart.get(k)!));
 }

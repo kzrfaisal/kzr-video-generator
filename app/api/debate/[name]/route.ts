@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { isValidDebateName } from '@/src/infrastructure/process/runStage';
 import { publishMetadata, publishRecordPath, projectPath, reelPartScriptPath } from '@/src/shared/filesystem/paths';
-import { findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
+import { expectedReelCount, findMainVideo, findReelVideos, hasThumbnail, hasAudio } from '@/src/features/rendering/videoFiles';
 import { readProjectDocument, readProjectScriptText } from '@/src/infrastructure/storage/localProjectStore';
 import { applyExactProjectTitle, metadataToMarkdown, parseMetadataMarkdown } from '@/src/domain/projects/metadata';
 import { readPipelineState } from '@/src/infrastructure/storage/localPipelineStore';
@@ -39,7 +39,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
 
   // Reel part scripts that have been extracted (for recovery/editing).
   const reelScripts = [];
-  for (let k = 1; k <= 3; k++) {
+  const reelsTargetCount = expectedReelCount(name);
+  for (let k = 1; k <= reelsTargetCount; k++) {
     const p = reelPartScriptPath(name, k);
     if (fs.existsSync(p)) reelScripts.push({ part: k, script: fs.readFileSync(p, 'utf-8') });
   }
@@ -58,6 +59,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     videoExists: findMainVideo(name) !== null,
     reelScripts,                          // [] until extracted
     reelsCount: findReelVideos(name).length,
+    reelsTargetCount,
     publishing,
     pipeline: readPipelineState(name),
   });

@@ -1,3 +1,21 @@
+:root {
+  /* New studio direction: shared by each redesigned screen as it is migrated. */
+  --studio-bg: #080a0c;
+  --studio-sidebar: #050607;
+  --studio-panel: #151719;
+  --studio-panel-raised: #1b1e20;
+  --studio-panel-hover: #202427;
+  --studio-border: #2a2e31;
+  --studio-border-strong: #3a4044;
+  --studio-text: #f4f6f7;
+  --studio-muted: #949b9f;
+  --studio-accent: #b9e7f5;
+  --studio-accent-strong: #8fd5ec;
+  --studio-accent-ink: #071014;
+  --studio-ok: #8ee0b7;
+  --studio-warning: #f2cc8f;
+}
+
 :root,
 :root[data-theme='light'],
 body[data-theme='light'],

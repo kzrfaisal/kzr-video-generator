@@ -17,9 +17,9 @@ async function sleep(ms: number) {
 }
 
 /**
- * Meta requires Reel audio to be AAC at 48 kHz. OpenAI TTS files are 24 kHz, so
- * normalize the audio track and move the MP4 metadata to the front before upload.
- * The video stream is copied without losing quality or spending time re-encoding it.
+ * Normalize every upload to Meta's conservative Reel profile. Copying the generated
+ * video stream preserved full-range yuvj420p and H.264 level 5.0; Meta's resumable
+ * uploader can reject that combination with an opaque ProcessingFailedError.
  */
 function prepareInstagramVideo(videoPath: string): { file: string; cleanup: () => void } {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kzr-instagram-'));
@@ -29,12 +29,28 @@ function prepareInstagramVideo(videoPath: string): { file: string; cleanup: () =
     '-i', videoPath,
     '-map', '0:v:0',
     '-map', '0:a:0?',
-    '-c:v', 'copy',
+    '-vf', 'scale=in_range=auto:out_range=tv,format=yuv420p',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '20',
+    '-profile:v', 'high',
+    '-level:v', '4.2',
+    '-color_range', 'tv',
+    '-r', '30',
+    '-fps_mode', 'cfr',
+    '-g', '60',
+    '-keyint_min', '60',
+    '-sc_threshold', '0',
+    '-flags', '+cgop',
     '-c:a', 'aac',
     '-ar', '48000',
     '-ac', '2',
     '-b:a', '128k',
     '-movflags', '+faststart',
+    // Meta rejects MP4 edit lists with an opaque ProcessingFailedError.
+    '-use_editlist', '0',
+    '-map_metadata', '-1',
+    '-f', 'mp4',
     output,
   ], { encoding: 'utf-8' });
 
@@ -75,8 +91,6 @@ export async function uploadInstagramReel(
         Authorization: `OAuth ${env.INSTAGRAM_ACCESS_TOKEN}`,
         offset: '0',
         file_size: String(bytes.length),
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': String(bytes.length),
       },
       body: bytes,
     });

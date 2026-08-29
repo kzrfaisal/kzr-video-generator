@@ -1,10 +1,51 @@
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { ensureDir, parseDebateFile, waitForEnter } from '@/src/shared/utils';
 import { extract, ExtractedPart } from './extractReelScripts';
 import { run as makeVideo } from '@/src/features/rendering/makeVideo';
 import { ensureOutroAudio } from './reelOutro';
 import { buildRenderCaptions, type RenderCaption } from '@/src/domain/projects/captions';
+import { publishDir } from '@/src/shared/filesystem/paths';
+
+const FINAL_REEL_SECONDS = 52;
+
+function normalizeReelDuration(parentName: string, partName: string): void {
+  const dir = publishDir(parentName);
+  const candidates = fs.readdirSync(dir)
+    .filter(file => file.startsWith(`${partName}_`) && file.endsWith('.mp4'))
+    .sort();
+  const latest = candidates.at(-1);
+  if (!latest) throw new Error(`Rendered Reel was not found for ${partName}.`);
+
+  const input = path.join(dir, latest);
+  const output = path.join(dir, `.${latest}.duration.mp4`);
+  const result = spawnSync('ffmpeg', [
+    '-y',
+    '-i', input,
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+    '-vf', `tpad=stop_mode=clone:stop_duration=${FINAL_REEL_SECONDS}`,
+    '-af', 'apad',
+    '-t', String(FINAL_REEL_SECONDS),
+    '-r', '30',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '20',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-ar', '48000',
+    '-ac', '2',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    output,
+  ], { encoding: 'utf-8' });
+  if (result.status !== 0 || !fs.existsSync(output)) {
+    try { fs.unlinkSync(output); } catch { /* no partial output */ }
+    throw new Error(`Normalizing ${partName} to ${FINAL_REEL_SECONDS} seconds failed: ${result.stderr.trim()}`);
+  }
+  fs.renameSync(output, input);
+}
 
 function copyPartAudio(
   srcDir: string,
@@ -68,12 +109,13 @@ export async function buildReelsFromParts(debateName: string, parts: ExtractedPa
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    const outroMp3 = await ensureOutroAudio(i as 0 | 1 | 2, part.contentMode ?? 'debate');
+    const outroMp3 = await ensureOutroAudio(i, part.contentMode ?? 'debate');
     console.log(`\nCopying audio for ${part.name} (${part.origLineIndices.length} lines + outro)...`);
     copyPartAudio(srcAudioDir, srcFiles, sourceCaptions, part, outroMp3);
 
     console.log(`\nBuilding video for ${part.name}...`);
     makeVideo(`reels/${part.name}`);
+    normalizeReelDuration(debateName, part.name);
   }
 }
 
