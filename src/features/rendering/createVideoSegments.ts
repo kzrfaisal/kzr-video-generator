@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { ensureDir, wrapText, parseDebateFile } from '@/src/shared/utils';
-import { config, STYLES, SubtitleStyle } from '@/config';
+import { config, STYLES, SubtitleStyle, type SceneTitleMode } from '@/config';
 import { publishMetadata } from '@/src/shared/filesystem/paths';
 import { createInfographicOverlay } from '@/src/features/visuals/infographic';
 import { visualSceneForLine } from '@/src/features/visuals/visualScenes';
@@ -109,7 +109,7 @@ function audioDuration(file: string): number {
 /** Alternate eased zoom-in/LTR and zoom-out/RTL motion for each new image. */
 function photoMotionFilter(portrait: boolean, lineIndex: number, elapsedSec: number): string {
   const offset = Math.max(0, Math.round(elapsedSec * config.fps));
-  const easeFrames = config.fps * 18;
+  const easeFrames = config.fps * 15;
   const ease = `(0.5-0.5*cos(PI*min((on+${offset})/${easeFrames}\\,1)))`;
   const zoomIn = Math.floor(lineIndex / 3) % 2 === 0;
   const zoom = zoomIn ? `1+0.12*${ease}` : `1.12-0.12*${ease}`;
@@ -141,6 +141,7 @@ export function createSegment(
   sceneHeadline?: string,
   motionOffsetSec = 0,
   speechDurationSec = audioDuration(audio),
+  sceneTitleMode: SceneTitleMode = config.sceneTitleMode,
 ): void {
   const style = STYLES[styleName] ?? STYLES['youtube-classic'];
   const wrapped = wrapText(text, style.wrapWidth ?? config.subtitleWrapWidth);
@@ -172,7 +173,7 @@ export function createSegment(
       ? createInfographicOverlay(
         debateName, speaker, text, config.isReelStyle,
         outputBase, config.bannerFont.font, photoMode, sceneHeadline,
-        config.sceneTitlesEnabled,
+        sceneTitleMode,
       )
     : { filters: [], tempFiles: [] };
   allFilters.push(...infographic.filters);
@@ -315,6 +316,9 @@ export function run(debateName: string): void {
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
     const sceneKey = plannedScene?.id ?? `line-${idx}`;
+    const sceneTitleMode = config.sceneTitleMode === 'intro' && sceneElapsed.has(sceneKey)
+      ? 'hidden'
+      : config.sceneTitleMode;
     const motionOffsetSec = sceneElapsed.get(sceneKey) ?? 0;
     const speechDurationSec = audioDuration(audioPath);
 
@@ -323,6 +327,7 @@ export function run(debateName: string): void {
       speaker, debateName, idx, files.length, sceneImage, audioPath, text,
       segmentPath, styleName, startPadSec, endPadSec, bannerText,
       hasScenePhoto, plannedScene?.headline, motionOffsetSec, speechDurationSec,
+      sceneTitleMode,
     );
     // xfade overlaps the outgoing and incoming clips. Move the next clip's
     // camera clock back by that overlap so the photo stays pixel-aligned while

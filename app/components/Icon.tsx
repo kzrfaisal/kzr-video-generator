@@ -52,7 +52,7 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
     case 'sun':
       return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></svg>;
     case 'sparkles':
-      return <svg {...common}><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2Z" /><path d="m18.5 13 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7Z" /></svg>;
+      return <svg {...common}><path d="m11 2.5 1.25 4.25L16.5 8l-4.25 1.25L11 13.5 9.75 9.25 5.5 8l4.25-1.25Z" /><path d="m18 11.5.85 2.65 2.65.85-2.65.85L18 18.5l-.85-2.65-2.65-.85 2.65-.85Z" /><path d="m5 15 .55 1.45L7 17l-1.45.55L5 19l-.55-1.45L3 17l1.45-.55Z" /></svg>;
     case 'users':
       return <svg {...common}><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.7A4.5 4.5 0 0 1 21 19" /></svg>;
     case 'user':

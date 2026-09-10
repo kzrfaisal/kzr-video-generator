@@ -46,8 +46,6 @@ function generateExplainerThumbnail(debateName: string, hook: string, fontfile: 
     'eq=contrast=1.06:brightness=-0.04:saturation=1.08',
     'drawbox=x=0:y=0:w=720:h=720:color=0x020812@0.78:t=fill',
     'drawbox=x=720:y=0:w=560:h=720:color=0x020812@0.10:t=fill',
-    'drawbox=x=64:y=68:w=8:h=48:color=0x22d3ee@1:t=fill',
-    `drawtext=fontfile=${fontfile}:text=VISUAL EXPLAINER:fontcolor=white@0.92:fontsize=26:x=91:y=76`,
   ];
 
   hookLines.forEach((line, index) => {

@@ -58,6 +58,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (c.sceneTitlesEnabled !== undefined && typeof c.sceneTitlesEnabled !== 'boolean') {
     return NextResponse.json({ error: 'Scene titles enabled must be true or false.' }, { status: 400 });
   }
+  if (c.sceneTitleMode !== undefined && !['intro', 'persistent', 'hidden'].includes(c.sceneTitleMode)) {
+    return NextResponse.json({ error: `Invalid scene title mode: ${c.sceneTitleMode}` }, { status: 400 });
+  }
   if (c.subtitleStyle && !(c.subtitleStyle in STYLES)) {
     return NextResponse.json({ error: `Invalid subtitle style: ${c.subtitleStyle}` }, { status: 400 });
   }
@@ -111,7 +114,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ name: st
   if (['voices', 'ttsModel', 'ttsSpeed'].some(key => c[key] !== undefined && changed(key))) {
     ['audio', 'video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
   }
-  if (['subtitlesEnabled', 'sceneTitlesEnabled', 'subtitleStyle', 'videoStyle', 'customSubtitle'].some(key => c[key] !== undefined && changed(key))) {
+  if (['subtitlesEnabled', 'sceneTitlesEnabled', 'sceneTitleMode', 'subtitleStyle', 'videoStyle', 'customSubtitle'].some(key => c[key] !== undefined && changed(key))) {
     ['video', 'reels', 'publishing'].forEach(stage => invalidated.add(stage as PipelineStage));
   }
   const generation = project.config.generation;

@@ -87,12 +87,20 @@ function applySavedConfig(debateName: string) {
   }
 }
 
-/** Reels must keep the portrait preset, but should inherit the project's visual treatment. */
+/** Reels keep the portrait preset while inheriting project-level visual display choices. */
 function applySavedReelVisualMode(debateName: string) {
   try {
     const project = readProjectDocument(debateName);
     const visualMode = project.config?.visualMode;
     if (visualMode === 'debate' || visualMode === 'infographic') config.visualMode = visualMode;
+    const sceneTitleMode = project.config?.sceneTitleMode;
+    if (sceneTitleMode === 'intro' || sceneTitleMode === 'persistent' || sceneTitleMode === 'hidden') {
+      config.sceneTitleMode = sceneTitleMode;
+      config.sceneTitlesEnabled = sceneTitleMode !== 'hidden';
+    } else if (typeof project.config?.sceneTitlesEnabled === 'boolean') {
+      config.sceneTitlesEnabled = project.config.sceneTitlesEnabled;
+      config.sceneTitleMode = project.config.sceneTitlesEnabled ? 'persistent' : 'hidden';
+    }
   } catch (err: any) {
     console.warn(`Could not apply saved reel visual mode: ${err.message}`);
   }

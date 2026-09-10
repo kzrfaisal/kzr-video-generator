@@ -99,6 +99,8 @@ export interface BannerFont {
   glow?: { color: string; passes: { w: number; a: number }[] };
 }
 
+export type SceneTitleMode = 'intro' | 'persistent' | 'hidden';
+
 export interface Config {
   /** Auto-generate prerendered transition video clips before building the final video */
   createTransitionVideos: boolean;
@@ -132,6 +134,8 @@ export interface Config {
   subtitlesEnabled: boolean;
   /** Show or hide the large scene headline on infographic videos. */
   sceneTitlesEnabled: boolean;
+  /** Display scene headlines briefly with animation, for the whole scene, or not at all. */
+  sceneTitleMode: SceneTitleMode;
 
   /** OpenAI TTS model: 'tts-1' (faster/cheaper) or 'tts-1-hd' (higher quality) */
   ttsModel: string;
@@ -203,6 +207,7 @@ const baseConfig: Config = {
   subtitleWrapWidth: 78,
   subtitlesEnabled: true,
   sceneTitlesEnabled: true,
+  sceneTitleMode: 'intro',
 
   ttsModel: 'tts-1',
   ttsSpeed: 1.0,
@@ -335,6 +340,7 @@ export interface RunOverrides {
   ttsSpeed?: number;                   // 0.25–4.0
   subtitlesEnabled?: boolean;          // global spoken subtitle visibility
   sceneTitlesEnabled?: boolean;        // infographic scene headline visibility
+  sceneTitleMode?: SceneTitleMode;      // brief animated intro, persistent, or hidden
   subtitleStyle?: string;              // one STYLES key, applied to all speakers
   customSubtitle?: Partial<SubtitleStyle>; // custom fields layered over the chosen style
 }
@@ -367,7 +373,13 @@ export function configureRun(o: RunOverrides): void {
   if (o.ttsModel) merged.ttsModel = o.ttsModel as Config['ttsModel'];
   if (typeof o.ttsSpeed === 'number') merged.ttsSpeed = o.ttsSpeed;
   if (typeof o.subtitlesEnabled === 'boolean') merged.subtitlesEnabled = o.subtitlesEnabled;
-  if (typeof o.sceneTitlesEnabled === 'boolean') merged.sceneTitlesEnabled = o.sceneTitlesEnabled;
+  if (o.sceneTitleMode) {
+    merged.sceneTitleMode = o.sceneTitleMode;
+    merged.sceneTitlesEnabled = o.sceneTitleMode !== 'hidden';
+  } else if (typeof o.sceneTitlesEnabled === 'boolean') {
+    merged.sceneTitlesEnabled = o.sceneTitlesEnabled;
+    merged.sceneTitleMode = o.sceneTitlesEnabled ? 'persistent' : 'hidden';
+  }
   if (o.customSubtitle && Object.keys(o.customSubtitle).length > 0) {
     // Register a runtime style entry combining the chosen base style + the custom fields,
     // then point every speaker at it. createVideoSegments reads STYLES[key] at call time.
