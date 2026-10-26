@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './components/Icon';
+import { BrandMark } from './components/BrandMark';
 
 interface ReelScript { part: number; script: string; }
 
@@ -123,6 +124,8 @@ interface UsageNumbers {
 interface UsageCall extends UsageNumbers {
   id: string;
   createdAt: string;
+  projectId?: string;
+  projectTitle?: string;
   operation: string;
   model: string;
 }
@@ -132,6 +135,17 @@ interface UsageSummary {
   lastCall: UsageCall | null;
   usdToInr: number;
   exchangeRateAsOf: string;
+}
+
+interface ProjectUsageGroup {
+  id: string;
+  title: string;
+  calls: UsageCall[];
+  totalTokens: number;
+  characters: number;
+  costUsd: number;
+  costInr: number;
+  lastActivityAt: string;
 }
 
 interface ProjectMetadata {
@@ -163,7 +177,7 @@ type Theme = 'light' | 'dark';
 type WorkspaceSection = 'setup' | 'storyboard' | 'visuals' | 'video' | 'publish';
 type ReviewTab = 'script' | 'metadata';
 type MetadataPlatform = 'youtube' | 'reels';
-type HomeView = 'projects' | 'create';
+type HomeView = 'projects' | 'create' | 'logs';
 type ProjectFilter = 'all' | 'draft' | 'generating' | 'ready';
 type GeneratePlanSource = 'create' | 'script' | 'visuals';
 type GeneratePlanStage = 'script' | 'metadata' | 'visuals' | 'thumbnail' | 'audio' | 'video' | 'shorts' | 'publish';
@@ -213,6 +227,28 @@ const DEFAULT_CUSTOM: CustomSubtitle = {
   bordercolor: 'black', borderw: 3, margin: 120,
 };
 
+function visualModeForContentMode(contentMode: RunConfig['contentMode']): RunConfig['visualMode'] {
+  return contentMode === 'debate' ? 'debate' : 'infographic';
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  return (
+    <button
+      className="theme-toggle"
+      type="button"
+      role="switch"
+      aria-checked={theme === 'dark'}
+      aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+      title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+      onClick={onToggle}
+    >
+      <Icon name="sun" size={15} />
+      <span className="theme-toggle-track"><i /></span>
+      <Icon name="moon" size={15} />
+    </button>
+  );
+}
+
 /** Drop empty/undefined fields (e.g. blank font → use the default) before sending. */
 function cleanCustom(cs: CustomSubtitle): CustomSubtitle {
   const out: CustomSubtitle = {};
@@ -238,6 +274,18 @@ function formatCredentialDate(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function formatLogDate(value: string | number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return new Intl.DateTimeFormat('en', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(date);
+}
+
+function readableOperation(value: string): string {
+  return value.replace(/[-_]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function formatTokens(value: number): string {
@@ -414,6 +462,7 @@ function combineCaption(body: string, hashtags: string[]): string {
 }
 
 function activityLabel(action: string): string {
+  if (action === 'brief') return 'Creating your title, description and thumbnail hook…';
   if (action === 'script') return 'Creating your script…';
   if (action === 'metadata') return 'Creating titles, descriptions and captions…';
   if (action === 'thumbnail') return 'Creating the thumbnail…';
@@ -481,13 +530,16 @@ export default function Home() {
     publish: false,
   });
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [usageCalls, setUsageCalls] = useState<UsageCall[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [thumbnailFeedback, setThumbnailFeedback] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const thumbnailVariantRef = useRef(0);
 
   useEffect(() => {
     fetch('/api/options').then(r => r.json()).then(setOptions).catch(() => {});
     refreshProjects();
-    refreshUsage();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -545,11 +597,14 @@ export default function Home() {
     } catch { /* the editor remains usable if project history cannot load */ }
   }
 
-  async function refreshUsage() {
+  async function refreshLogs() {
+    setLogsLoading(true);
     try {
-      const data = await jsonOrThrow(await fetch('/api/usage', { cache: 'no-store' }));
-      setUsage(data as UsageSummary);
-    } catch { /* Usage display must never block the video workflow. */ }
+      const data = await jsonOrThrow(await fetch('/api/logs', { cache: 'no-store' }));
+      setUsage(data.usage as UsageSummary);
+      setUsageCalls((data.calls ?? []) as UsageCall[]);
+    } catch { /* Logs must never block the video workflow. */ }
+    finally { setLogsLoading(false); }
   }
 
   async function refreshVisuals(debateName: string) {
@@ -608,9 +663,12 @@ export default function Home() {
     setEditReels(norm.reelScripts);
     const savedSceneTitleMode = d.config?.sceneTitleMode
       ?? (d.config?.sceneTitlesEnabled === false ? 'hidden' : 'persistent');
+    const savedContentMode = (norm.config?.contentMode ?? DEFAULT_CFG.contentMode) as RunConfig['contentMode'];
     setCfg({
       ...DEFAULT_CFG,
       ...(norm.config ?? {}),
+      contentMode: savedContentMode,
+      visualMode: visualModeForContentMode(savedContentMode),
       sceneTitleMode: savedSceneTitleMode,
       sceneTitlesEnabled: savedSceneTitleMode !== 'hidden',
       thumbnailHook: norm.config?.thumbnailHook ?? norm.metadataFields?.thumbnailHook ?? '',
@@ -618,6 +676,8 @@ export default function Home() {
       customSubtitle: norm.config?.customSubtitle ?? DEFAULT_CUSTOM,
     });
     setUseCustom(!!norm.config?.customSubtitle);
+    setThumbnailFeedback('');
+    thumbnailVariantRef.current = 0;
     setNonce(n => n + 1);
     localStorage.setItem(LS_KEY, norm.debateName);
   }
@@ -644,7 +704,7 @@ export default function Home() {
     setActivityMessage(activityLabel(action));
     try { await fn(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong.'); }
-    finally { setBusy(''); setActivityMessage(''); await refreshUsage(); }
+    finally { setBusy(''); setActivityMessage(''); await refreshLogs(); }
   }
 
   // Start a long job and resolve when it finishes (rejecting on error). Updates progress
@@ -684,8 +744,23 @@ export default function Home() {
 
   function buildConfigPayload(): RunConfig {
     const { customSubtitle, ...rest } = cfg;
-    return useCustom ? { ...rest, customSubtitle: cleanCustom(customSubtitle ?? DEFAULT_CUSTOM) } : rest;
+    const normalized = { ...rest, visualMode: visualModeForContentMode(rest.contentMode) };
+    return useCustom ? { ...normalized, customSubtitle: cleanCustom(customSubtitle ?? DEFAULT_CUSTOM) } : normalized;
   }
+
+  const generateProjectBrief = () => {
+    void call('brief', async () => {
+      const data = await jsonOrThrow(await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentMode: cfg.contentMode }),
+      }));
+      setTopic(data.brief.title);
+      setContext(data.brief.description);
+      setCfg(current => ({ ...current, thumbnailHook: data.brief.thumbnailHook }));
+      setCreationDraftSaved(false);
+    });
+  };
 
   // ---- raw steps (composable; used by manual buttons and the auto chain) ----
   // Each takes an optional debate name so the non-stop chain can thread it through
@@ -788,11 +863,21 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Could not save the scene-title setting.');
     }
   };
-  const rawThumbnail = async (name = debate!.debateName) => {
+  const rawThumbnail = async (name = debate!.debateName, variant = 0, showConfirmation = false) => {
     setActivityMessage('Creating the thumbnail…');
-    await jsonOrThrow(await fetch(`/api/debate/${name}/thumbnail`, { method: 'POST' }));
+    setThumbnailFeedback('');
+    await jsonOrThrow(await fetch(`/api/debate/${name}/thumbnail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant }),
+    }));
     setDebate(d => (d ? { ...d, thumbnailExists: true } : d));
     setNonce(n => n + 1);
+    if (showConfirmation) setThumbnailFeedback(
+      cfg.contentMode === 'narrated-explainer'
+        ? 'Thumbnail updated with a different project picture.'
+        : 'Thumbnail rebuilt successfully.',
+    );
   };
   const rawVisuals = async (name = debate!.debateName, selectedConfig = buildConfigPayload()) => {
     setActivityMessage('Finding and preparing scene pictures…');
@@ -856,7 +941,10 @@ export default function Home() {
   const generateScript = () => call('script', async () => { await rawScript(); });
   const saveScenes = () => call('save-scenes', rawSaveScenes);
   const generateMetadata = () => call('metadata', rawMetadata);
-  const generateThumbnail = () => call('thumbnail', rawThumbnail);
+  const generateThumbnail = () => call('thumbnail', async () => {
+    thumbnailVariantRef.current += 1;
+    await rawThumbnail(debate!.debateName, thumbnailVariantRef.current, true);
+  });
   const generateVisuals = () => call('visuals', rawVisuals);
   const generateAudio = () => call('audio', rawAudio);
   const generateVideo = () => call('video', rawVideoRender);
@@ -1029,7 +1117,14 @@ export default function Home() {
     try { saved = JSON.parse(localStorage.getItem(CREATION_DRAFT_KEY) ?? '{}'); }
     catch { /* ignore an invalid local draft */ }
     setDebate(null); setTopic(saved.topic ?? ''); setContext(saved.context ?? '');
-    setCfg({ ...DEFAULT_CFG, ...(saved.config ?? {}), voices: { ...DEFAULT_CFG.voices, ...(saved.config?.voices ?? {}) } });
+    const savedContentMode = saved.config?.contentMode ?? DEFAULT_CFG.contentMode;
+    setCfg({
+      ...DEFAULT_CFG,
+      ...(saved.config ?? {}),
+      contentMode: savedContentMode,
+      visualMode: visualModeForContentMode(savedContentMode),
+      voices: { ...DEFAULT_CFG.voices, ...(saved.config?.voices ?? {}) },
+    });
     setEditScenes([]); setEditMetadataFields(null); setEditReels([]); setScriptDocument('');
     setReviewTab('script'); setMetadataPlatform('youtube');
     setVisualScenes([]);
@@ -1044,6 +1139,13 @@ export default function Home() {
     localStorage.removeItem(LS_KEY);
     setDebate(null); setJob(null); setError(''); setAuto(false); setAutoStep(null);
     setHomeView('projects');
+  }
+
+  function showLogs() {
+    localStorage.removeItem(LS_KEY);
+    setDebate(null); setJob(null); setError(''); setAuto(false); setAutoStep(null);
+    setHomeView('logs');
+    void refreshLogs();
   }
 
   function returnToVideoSetup() {
@@ -1110,8 +1212,26 @@ export default function Home() {
     });
   }
 
-  const setVoice = (sp: 'HOST' | 'A' | 'B', v: string) =>
-    setCfg(c => ({ ...c, voices: { ...c.voices, [sp]: v } }));
+  const setVoice = (sp: 'HOST' | 'A' | 'B', v: string) => {
+    if (cfg.voices[sp] === v) return;
+    const voices = { ...cfg.voices, [sp]: v };
+    const selectedConfig = { ...buildConfigPayload(), voices };
+    setCfg(c => ({ ...c, voices }));
+    setAudioSegments([]);
+    setDebate(current => current ? {
+      ...current,
+      config: { ...(current.config ?? {}), voices },
+      audioExists: false,
+      videoExists: false,
+      publishing: null,
+    } : current);
+    setError('Narrator voice changed. Generate narration audio before continuing to Render.');
+    if (debate) {
+      void saveConfig(debate.debateName, selectedConfig).catch(err => {
+        setError(err instanceof Error ? err.message : 'Could not save the narrator voice.');
+      });
+    }
+  };
 
   async function previewVoice(voice: string) {
     try {
@@ -1508,6 +1628,26 @@ export default function Home() {
   const thumbnailReady = cfg.outputType !== 'youtube' || !!debate?.thumbnailExists;
   const audioReady = !!debate?.audioExists && audioSegments.length > 0;
   const assetsReady = visualsReady && thumbnailReady && audioReady;
+  const renderEntryReady = audioReady && visualsReady && !sceneEditsChanged;
+  const openRenderScreen = () => {
+    if (!audioReady) {
+      setError('Generate narration audio before continuing to Render.');
+      setWorkspaceSection('visuals');
+      return;
+    }
+    if (!visualsReady) {
+      setError('Generate all required pictures before continuing to Render.');
+      setWorkspaceSection('visuals');
+      return;
+    }
+    if (sceneEditsChanged) {
+      setError('Save the script and regenerate its audio before continuing to Render.');
+      setWorkspaceSection('visuals');
+      return;
+    }
+    setError('');
+    setWorkspaceSection('video');
+  };
   const scriptSections = groupScriptScenes(editScenes);
   const statusForProject = (project: ProjectSummary): Exclude<ProjectFilter, 'all'> => {
     if (globalBusy?.debateName === project.debateName) return 'generating';
@@ -1523,6 +1663,26 @@ export default function Home() {
   const selectedVisualIndex = visualScenes.findIndex(scene => scene.id === selectedVisualId);
   const selectedVisual = selectedVisualIndex >= 0 ? visualScenes[selectedVisualIndex] : visualScenes[0] ?? null;
   const activeVisualIndex = selectedVisualIndex >= 0 ? selectedVisualIndex : selectedVisual ? 0 : -1;
+  const usageProjects = Array.from(usageCalls.reduce((groups, usageCall) => {
+    const id = usageCall.projectId || 'studio-tools';
+    const existing = groups.get(id) ?? {
+      id,
+      title: usageCall.projectTitle || (id === 'studio-tools' ? 'Studio tools' : id),
+      calls: [],
+      totalTokens: 0,
+      characters: 0,
+      costUsd: 0,
+      costInr: 0,
+      lastActivityAt: usageCall.createdAt,
+    } satisfies ProjectUsageGroup;
+    existing.calls.push(usageCall);
+    existing.totalTokens += usageCall.totalTokens;
+    existing.characters += usageCall.characters;
+    existing.costUsd += usageCall.costUsd;
+    existing.costInr += usageCall.costInr;
+    groups.set(id, existing);
+    return groups;
+  }, new Map<string, ProjectUsageGroup>()).values());
 
   const creating = homeView === 'create' && (!debate || workspaceSection === 'setup');
   const editingProject = !!debate && !creating;
@@ -1531,6 +1691,7 @@ export default function Home() {
   const renderingVideo = !!debate && workspaceSection === 'video';
   const publishingProject = !!debate && workspaceSection === 'publish';
   const projectsHome = !debate && homeView === 'projects';
+  const logsHome = !debate && homeView === 'logs';
   const youtubeOutputSelected = cfg.outputType === 'youtube';
   const reelsOutputSelected = cfg.outputType === 'short' || cfg.extractReels;
   const generatePlanStages = ([
@@ -1552,7 +1713,7 @@ export default function Home() {
   });
 
   return (
-    <main className={`app-shell theme-${theme} ${projectsHome ? 'projects-mode' : ''} ${creating ? 'creation-mode' : ''} ${editingProject ? 'project-mode' : ''} ${editingVisuals ? 'assets-mode' : ''} ${reviewingCopy ? 'review-mode' : ''} ${renderingVideo ? 'render-mode' : ''} ${publishingProject ? 'publish-mode' : ''}`}>
+    <main className={`app-shell theme-${theme} ${projectsHome || logsHome ? 'projects-mode' : ''} ${logsHome ? 'logs-mode' : ''} ${creating ? 'creation-mode' : ''} ${editingProject ? 'project-mode' : ''} ${editingVisuals ? 'assets-mode' : ''} ${reviewingCopy ? 'review-mode' : ''} ${renderingVideo ? 'render-mode' : ''} ${publishingProject ? 'publish-mode' : ''}`}>
       {generatePlanSource && (
         <div className="generate-plan-backdrop" role="presentation" onMouseDown={() => setGeneratePlanSource(null)}>
           <section className="generate-plan-modal" role="dialog" aria-modal="true" aria-labelledby="generate-plan-title" onMouseDown={event => event.stopPropagation()}>
@@ -1579,21 +1740,9 @@ export default function Home() {
           </section>
         </div>
       )}
-      <aside className="usage-hud" aria-label="OpenAI usage and estimated cost">
-        <div>
-          <span>Total</span>
-          <strong>{formatTokens(usage?.total.totalTokens ?? 0)} tokens</strong>
-          <small>{formatUsageMoney(usage?.total.costUsd ?? 0, 'USD')} · {formatUsageMoney(usage?.total.costInr ?? 0, 'INR')}</small>
-        </div>
-        <div title={usage?.lastCall ? `${usage.lastCall.operation} · ${usage.lastCall.model}` : 'No OpenAI calls tracked yet'}>
-          <span>Last call</span>
-          <strong>{formatTokens(usage?.lastCall?.totalTokens ?? 0)} tokens</strong>
-          <small>{usage?.lastCall?.characters ? `${formatTokens(usage.lastCall.characters)} chars · ` : ''}{formatUsageMoney(usage?.lastCall?.costUsd ?? 0, 'USD')} · {formatUsageMoney(usage?.lastCall?.costInr ?? 0, 'INR')}</small>
-        </div>
-      </aside>
       {!creating && !editingProject && <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark"><Icon name="play" size={15} /></span>
+          <BrandMark />
           <span><b>KZR</b><small>Creator Studio</small></span>
         </div>
         <span className="sidebar-label">Workspace</span>
@@ -1601,8 +1750,8 @@ export default function Home() {
           <button className={!debate && homeView === 'projects' ? 'nav-item active' : 'nav-item'} onClick={showProjects} disabled={working}>
             <Icon name="folder" size={17} /> Projects
           </button>
-          <button className="nav-item" onClick={startNew} disabled={working}>
-            <Icon name="plus" size={17} /> New video
+          <button className={!debate && homeView === 'logs' ? 'nav-item active' : 'nav-item'} onClick={showLogs} disabled={working}>
+            <Icon name="list" size={17} /> Logs
           </button>
         </nav>
         <div className="sidebar-footer">
@@ -1614,14 +1763,12 @@ export default function Home() {
       {creating && (
         <header className="creation-app-header">
           <button type="button" className="creation-brand" onClick={showProjects} disabled={working}>
-            <span className="brand-mark"><Icon name="play" size={16} /></span>
+            <BrandMark />
             <strong>KZR CREATOR STUDIO</strong>
           </button>
           <div className="creation-project-name"><strong>{debate?.topic || 'Untitled project'}</strong><small>{debate ? 'Existing project' : creationDraftSaved ? 'Saved locally' : 'New project'}</small></div>
           <div className="creation-header-actions">
-            <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
-              <Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} />
-            </button>
+            <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
             {!debate && <button className="save-draft-button" type="button" onClick={saveCreationDraft} disabled={working}>
               <Icon name="save" size={16} /> {creationDraftSaved ? 'Draft saved' : 'Save draft'}
             </button>}
@@ -1666,6 +1813,7 @@ export default function Home() {
                 <Icon name="search" size={17} />
                 <input value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects…" aria-label="Search projects" />
               </label>
+              <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
               <button className="projects-new-button" type="button" onClick={startNew}><Icon name="plus" size={17} /> New video</button>
             </div>
           </header>
@@ -1725,15 +1873,97 @@ export default function Home() {
         </section>
       )}
 
+      {logsHome && (
+        <section className="logs-screen" id="activity-logs">
+          <header className="projects-header logs-header">
+            <div>
+              <span className="projects-eyebrow">Local activity</span>
+              <h1>Logs &amp; usage</h1>
+              <p>Review every project’s AI activities, token usage and estimated cost.</p>
+            </div>
+            <div className="projects-toolbar">
+              <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
+              <button className="logs-refresh-button" type="button" onClick={() => void refreshLogs()} disabled={logsLoading}>
+                <Icon name="clock" size={16} /> {logsLoading ? 'Refreshing…' : 'Refresh logs'}
+              </button>
+            </div>
+          </header>
+
+          <div className="logs-summary-grid" aria-label="AI usage summary">
+            <article>
+              <span>AI calls</span>
+              <strong>{formatTokens(usage?.total.calls ?? 0)}</strong>
+              <small>{usage?.lastCall ? `Last ${formatLogDate(usage.lastCall.createdAt)}` : 'No calls recorded'}</small>
+            </article>
+            <article>
+              <span>Total tokens</span>
+              <strong>{formatTokens(usage?.total.totalTokens ?? 0)}</strong>
+              <small>{formatTokens(usage?.total.characters ?? 0)} speech characters</small>
+            </article>
+            <article>
+              <span>Estimated USD</span>
+              <strong>{formatUsageMoney(usage?.total.costUsd ?? 0, 'USD')}</strong>
+              <small>Across all recorded calls</small>
+            </article>
+            <article>
+              <span>Estimated INR</span>
+              <strong>{formatUsageMoney(usage?.total.costInr ?? 0, 'INR')}</strong>
+              <small>Rate: ₹{usage?.usdToInr ?? 0} per USD</small>
+            </article>
+          </div>
+
+          <section className="logs-panel project-usage-panel">
+            <header>
+              <div><h2>Project usage</h2><p>AI activities, tokens and estimated cost grouped by project.</p></div>
+              <span>{usageProjects.length} projects</span>
+            </header>
+            {logsLoading && usageProjects.length === 0 ? (
+              <div className="logs-empty"><span className="job-spinner" /><strong>Loading usage…</strong></div>
+            ) : usageProjects.length === 0 ? (
+              <div className="logs-empty"><Icon name="sparkles" size={22} /><strong>No project usage recorded</strong><p>Script, metadata, visual planning and narration activities will appear here.</p></div>
+            ) : (
+              <div className="project-usage-list">
+                {usageProjects.map(projectUsage => (
+                  <article className="project-usage-card" key={projectUsage.id}>
+                    <header>
+                      <div><strong>{projectUsage.title}</strong><small>Last activity {formatLogDate(projectUsage.lastActivityAt)}</small></div>
+                      <div className="project-usage-totals">
+                        <span><small>Usage</small><strong>{projectUsage.totalTokens ? `${formatTokens(projectUsage.totalTokens)} tokens` : `${formatTokens(projectUsage.characters)} chars`}</strong></span>
+                        <span><small>Cost</small><strong>{formatUsageMoney(projectUsage.costUsd, 'USD')} · {formatUsageMoney(projectUsage.costInr, 'INR')}</strong></span>
+                        <span><small>Activities</small><strong>{projectUsage.calls.length}</strong></span>
+                      </div>
+                    </header>
+                    <div className="usage-log-table" role="table" aria-label={`${projectUsage.title} AI usage`}>
+                      <div className="usage-log-heading" role="row">
+                        <span>Activity</span><span>Usage</span><span>Cost</span><span>Time</span>
+                      </div>
+                      {projectUsage.calls.map(callEntry => (
+                        <div className="usage-log-row" role="row" key={callEntry.id}>
+                          <span><strong>{readableOperation(callEntry.operation)}</strong><small>{callEntry.model}</small></span>
+                          <span><strong>{callEntry.totalTokens ? `${formatTokens(callEntry.totalTokens)} tokens` : `${formatTokens(callEntry.characters)} chars`}</strong><small>{callEntry.totalTokens ? `${formatTokens(callEntry.inputTokens)} in · ${formatTokens(callEntry.outputTokens)} out` : 'Speech generation'}</small></span>
+                          <span><strong>{formatUsageMoney(callEntry.costUsd, 'USD')}</strong><small>{formatUsageMoney(callEntry.costInr, 'INR')}</small></span>
+                          <time>{formatLogDate(callEntry.createdAt)}</time>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            <footer>Costs are estimates based on the locally configured model rates. Exchange rate reference: {usage?.exchangeRateAsOf ?? 'not available'}.</footer>
+          </section>
+        </section>
+      )}
+
       {creating && (
         <section className="creation-page">
           <aside className="creation-step-sidebar" aria-label="Creation steps">
             <ol>
-              <li className="active"><span>1</span><div><strong>Provide details</strong><small>Define your video</small></div></li>
-              <li><span>2</span><div><strong>Review script</strong><small>Edit the narration</small></div></li>
-              <li><span>3</span><div><strong>Create visuals</strong><small>Choose your pictures</small></div></li>
-              <li><span>4</span><div><strong>Render videos</strong><small>Build every output</small></div></li>
-              <li><span>5</span><div><strong>Download &amp; publish</strong><small>Share your work</small></div></li>
+              <li className="active"><span>1</span><button type="button" aria-current="step"><strong>Provide details</strong><small>Define your video</small></button></li>
+              <li><span>2</span><button type="button" onClick={returnToReviewedScript} disabled={!debate || working}><strong>Review script</strong><small>Edit the narration</small></button></li>
+              <li><span>3</span><button type="button" onClick={() => setWorkspaceSection('visuals')} disabled={!debate || working}><strong>Create visuals</strong><small>Choose your pictures</small></button></li>
+              <li><span>4</span><button type="button" onClick={openRenderScreen} disabled={!debate || working || !renderEntryReady}><strong>Render videos</strong><small>{debate && !renderEntryReady ? 'Generate audio first' : 'Build every output'}</small></button></li>
+              <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')} disabled={!debate || working || !completePackReady}><strong>Download &amp; publish</strong><small>{debate && !completePackReady ? 'Render videos first' : 'Share your work'}</small></button></li>
             </ol>
           </aside>
 
@@ -1745,18 +1975,22 @@ export default function Home() {
 
             <div className="creation-studio">
               <section className="creation-brief-column">
-                <div className="creation-section-title"><span><Icon name="folder" size={17} /></span><h2>Project brief</h2></div>
+                <div className="creation-section-title creation-section-title-with-action">
+                  <span><Icon name="folder" size={17} /></span>
+                  <h2>Project brief</h2>
+                  {!debate && <button type="button" className="generate-brief-button" onClick={generateProjectBrief} disabled={working} title="Invent a title, context and thumbnail hook for the selected format"><Icon name="sparkles" size={15} /> {busy === 'brief' ? 'Generating…' : 'Auto-generate brief'}</button>}
+                </div>
                 <div className="creation-field">
-                  <label htmlFor="topic">Title</label>
+                  <label htmlFor="topic">Title or topic</label>
                   <div className="counted-field">
-                    <input id="topic" maxLength={120} value={topic} onChange={e => { setTopic(e.target.value); setCreationDraftSaved(false); }} placeholder="e.g. How Ancient Rome shaped the modern world" disabled={working || !!debate} />
+                    <input id="topic" maxLength={120} value={topic} onChange={e => { setTopic(e.target.value); setError(''); setCreationDraftSaved(false); }} placeholder="e.g. How Ancient Rome shaped the modern world" disabled={working || !!debate} />
                     <small>{topic.length}/120</small>
                   </div>
                 </div>
                 <div className="creation-field">
                   <label htmlFor="context">Context</label>
                   <div className="counted-field textarea-field">
-                    <textarea id="context" maxLength={1000} value={context} onChange={e => { setContext(e.target.value); setCreationDraftSaved(false); }} placeholder="Describe the topic, key messages, audience and anything the script should include…" disabled={working || !!debate} />
+                    <textarea id="context" maxLength={1000} value={context} onChange={e => { setContext(e.target.value); setError(''); setCreationDraftSaved(false); }} placeholder="Describe the topic, key messages, audience and anything the script should include…" disabled={working || !!debate} />
                     <small>{context.length}/1000</small>
                   </div>
                 </div>
@@ -1767,6 +2001,7 @@ export default function Home() {
                     <small>{cfg.thumbnailHook.length}/80</small>
                   </div>
                 </div>
+                {!debate && error && <div className="brief-feedback" role="alert"><span>{error}</span></div>}
                 <div className={`draft-state ${debate || creationDraftSaved ? 'saved' : ''}`}><Icon name="check" size={14} />{debate ? 'Settings used to create this project' : creationDraftSaved ? 'Draft saved locally' : 'Save the draft to keep these choices'}</div>
               </section>
 
@@ -1775,21 +2010,11 @@ export default function Home() {
 
                 <h3 className="studio-label">Format</h3>
                 <div className="creation-choice-grid image-choice-grid">
-                  <button type="button" aria-pressed={cfg.contentMode === 'narrated-explainer'} className={`studio-image-choice choice-explainer ${cfg.contentMode === 'narrated-explainer' ? 'selected' : ''}`} disabled={working || !!debate} onClick={() => { setCfg(c => ({ ...c, contentMode: 'narrated-explainer' })); setCreationDraftSaved(false); }}>
-                    <span className="choice-copy"><Icon name="monitor" size={22} /><span><strong>Explainer</strong><small>Clear, structured narration</small></span></span>
+                  <button type="button" aria-pressed={cfg.contentMode === 'narrated-explainer'} className={`studio-image-choice choice-explainer ${cfg.contentMode === 'narrated-explainer' ? 'selected' : ''}`} disabled={working || !!debate} onClick={() => { setCfg(c => ({ ...c, contentMode: 'narrated-explainer', visualMode: 'infographic' })); setCreationDraftSaved(false); }}>
+                    <span className="choice-copy"><Icon name="monitor" size={22} /><span><strong>Explainer</strong><small>Narration with stock visuals</small></span></span>
                   </button>
                   <button type="button" aria-pressed={cfg.contentMode === 'debate'} className={`studio-image-choice choice-debate ${cfg.contentMode === 'debate' ? 'selected' : ''}`} disabled={working || !!debate} onClick={() => { setCfg(c => ({ ...c, contentMode: 'debate', visualMode: 'debate' })); setCreationDraftSaved(false); }}>
-                    <span className="choice-copy"><Icon name="users" size={22} /><span><strong>Debate</strong><small>Two sides, one topic</small></span></span>
-                  </button>
-                </div>
-
-                <h3 className="studio-label">Visual type</h3>
-                <div className="creation-choice-grid image-choice-grid">
-                  <button type="button" aria-pressed={cfg.visualMode === 'infographic'} className={`studio-image-choice choice-stock ${cfg.visualMode === 'infographic' ? 'selected' : ''}`} disabled={working || !!debate} onClick={() => { setCfg(c => ({ ...c, visualMode: 'infographic', contentMode: 'narrated-explainer' })); setCreationDraftSaved(false); }}>
-                    <span className="choice-copy"><Icon name="image" size={22} /><span><strong>Stock visuals</strong><small>Real-world images with motion</small></span></span>
-                  </button>
-                  <button type="button" aria-pressed={cfg.visualMode === 'debate'} className={`studio-image-choice choice-characters ${cfg.visualMode === 'debate' ? 'selected' : ''}`} disabled={working || !!debate} onClick={() => { setCfg(c => ({ ...c, visualMode: 'debate' })); setCreationDraftSaved(false); }}>
-                    <span className="choice-copy"><Icon name="user" size={22} /><span><strong>Characters</strong><small>Speaker-led studio scenes</small></span></span>
+                    <span className="choice-copy"><Icon name="users" size={22} /><span><strong>Debate</strong><small>Two hosts, opposing views</small></span></span>
                   </button>
                 </div>
 
@@ -1823,7 +2048,6 @@ export default function Home() {
                   {youtubeOutputSelected && <div><span><Icon name="monitor" size={20} /></span><p><strong>YouTube video</strong><small>{cfg.videoLengthMinutes} minutes</small></p></div>}
                   {reelsOutputSelected && <div><span><Icon name="smartphone" size={20} /></span><p><strong>Reels / Shorts</strong><small>{youtubeOutputSelected ? 'Automatic extraction' : `${REEL_DURATION_SECONDS} seconds`}</small></p></div>}
                   <div><span><Icon name="play" size={20} /></span><p><strong>Format</strong><small>{cfg.contentMode === 'narrated-explainer' ? 'Explainer' : 'Debate'}</small></p></div>
-                  <div><span><Icon name="image" size={20} /></span><p><strong>Visuals</strong><small>{cfg.visualMode === 'infographic' ? 'Stock visuals' : 'Characters'}</small></p></div>
                 </div>
                 <p className="output-plan-note">You can review the script and visuals before rendering.</p>
               </aside>
@@ -1842,7 +2066,7 @@ export default function Home() {
         </section>
       )}
 
-      {error && <div className="error">{error}</div>}
+      {error && !creating && <div className="error">{error}</div>}
 
       {debate && (
         <>
@@ -1850,13 +2074,13 @@ export default function Home() {
           <section className="copy-review-screen">
             <header className="copy-review-header">
               <button type="button" className="copy-review-brand" onClick={showProjects} disabled={working}>
-                <span className="brand-mark"><Icon name="play" size={15} /></span>
+                <BrandMark />
                 <strong>KZR CREATOR STUDIO</strong>
               </button>
               <div className="copy-review-project"><span>{debate.debateName}</span><strong>{debate.topic}</strong></div>
               <div className="copy-review-header-actions">
                 <span className={sceneEditsChanged || metadataChanged ? 'unsaved-indicator' : 'saved-indicator'}><Icon name="check" size={13} /> {sceneEditsChanged || metadataChanged ? 'Changes not saved' : 'All changes saved'}</span>
-                <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
+                <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
               </div>
             </header>
 
@@ -1866,13 +2090,9 @@ export default function Home() {
                   <li className="complete"><span><Icon name="check" size={14} /></span><button type="button" onClick={returnToVideoSetup}><strong>Video setup</strong><small>Brief and direction</small></button></li>
                   <li className="active"><span>2</span><button type="button"><strong>Script &amp; metadata</strong><small>Review your copy</small></button></li>
                   <li><span>3</span><button type="button" onClick={() => setWorkspaceSection('visuals')}><strong>Visuals</strong><small>Pictures and audio</small></button></li>
-                  <li><span>4</span><button type="button" onClick={() => setWorkspaceSection('video')}><strong>Render</strong><small>Create the videos</small></button></li>
-                  <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')}><strong>Publish</strong><small>Download or share</small></button></li>
+                  <li><span>4</span><button type="button" onClick={openRenderScreen} disabled={working || !renderEntryReady}><strong>Render</strong><small>{audioReady ? 'Create the videos' : 'Generate audio first'}</small></button></li>
+                  <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')} disabled={working || !completePackReady}><strong>Publish</strong><small>{completePackReady ? 'Download or share' : 'Render videos first'}</small></button></li>
                 </ol>
-                <div className="copy-sidebar-summary">
-                  <span>{cfg.contentMode === 'debate' ? 'Debate' : 'Explainer'}</span>
-                  <strong>{cfg.videoLengthMinutes} min {cfg.extractReels ? '+ reels' : ''}</strong>
-                </div>
               </aside>
 
               <div className="copy-review-workspace">
@@ -1979,12 +2199,12 @@ export default function Home() {
           <section className="assets-screen">
             <header className="copy-review-header assets-header">
               <button type="button" className="copy-review-brand" onClick={showProjects} disabled={working}>
-                <span className="brand-mark"><Icon name="play" size={15} /></span><strong>KZR CREATOR STUDIO</strong>
+                <BrandMark /><strong>KZR CREATOR STUDIO</strong>
               </button>
               <div className="copy-review-project"><span>{debate.debateName}</span><strong>{debate.topic}</strong></div>
               <div className="copy-review-header-actions">
                 <span className={assetsReady ? 'saved-indicator' : 'unsaved-indicator'}>{assetsReady ? <><Icon name="check" size={13} /> Assets ready</> : 'Assets need preparation'}</span>
-                <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
+                <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
               </div>
             </header>
 
@@ -1994,12 +2214,9 @@ export default function Home() {
                   <li className="complete"><span><Icon name="check" size={14} /></span><button type="button" onClick={returnToVideoSetup}><strong>Video setup</strong><small>Brief and direction</small></button></li>
                   <li className="complete"><span><Icon name="check" size={14} /></span><button type="button" onClick={() => setWorkspaceSection('storyboard')}><strong>Script &amp; metadata</strong><small>Copy reviewed</small></button></li>
                   <li className="active"><span>3</span><button type="button"><strong>Visuals &amp; audio</strong><small>Prepare assets</small></button></li>
-                  <li><span>4</span><button type="button" onClick={() => setWorkspaceSection('video')}><strong>Render</strong><small>Create the videos</small></button></li>
-                  <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')}><strong>Publish</strong><small>Download or share</small></button></li>
+                  <li><span>4</span><button type="button" onClick={openRenderScreen} disabled={working || !renderEntryReady}><strong>Render</strong><small>{audioReady ? 'Create the videos' : 'Generate audio first'}</small></button></li>
+                  <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')} disabled={working || !completePackReady}><strong>Publish</strong><small>{completePackReady ? 'Download or share' : 'Render videos first'}</small></button></li>
                 </ol>
-                <div className="copy-sidebar-summary assets-summary">
-                  <span>Asset status</span><strong>{[visualsReady, thumbnailReady, audioReady].filter(Boolean).length}/3 ready</strong>
-                </div>
               </aside>
 
               <div className="assets-main">
@@ -2052,7 +2269,8 @@ export default function Home() {
                     <header><div><span className="asset-number">02</span><div><h2>Thumbnail</h2><p>Generated from your hook and topic visuals.</p></div></div></header>
                     {debate.thumbnailExists ? <img src={`/api/debate/${name}/thumbnail?t=${nonce}`} alt="Video thumbnail" /> : <div className="thumbnail-empty"><Icon name="image" size={24} /><span>Thumbnail preview</span></div>}
                     <div className="thumbnail-hook-copy"><small>Hook</small><strong>{editMetadataFields?.thumbnailHook || cfg.thumbnailHook || 'No thumbnail hook'}</strong></div>
-                    <button type="button" className="asset-secondary-button" onClick={generateThumbnail} disabled={working || (cfg.visualMode === 'infographic' && !visualsReady)}>{debate.thumbnailExists ? 'Regenerate thumbnail' : 'Generate thumbnail'}</button>
+                    <button type="button" className="asset-secondary-button" onClick={generateThumbnail} disabled={working}>{busy === 'thumbnail' ? 'Creating thumbnail…' : debate.thumbnailExists ? 'Regenerate thumbnail' : 'Generate thumbnail'}</button>
+                    {thumbnailFeedback && <p className="thumbnail-feedback" role="status"><Icon name="check" size={14} /> {thumbnailFeedback}</p>}
                   </section>}
 
                   <section className="asset-panel audio-asset-panel">
@@ -2070,7 +2288,7 @@ export default function Home() {
                 <footer className="assets-footer">
                   <button type="button" className="copy-back-button" onClick={() => setWorkspaceSection('storyboard')} disabled={working}>Back</button>
                   <span>{assetsReady ? <><Icon name="check" size={13} /> Ready to render</> : 'Prepare all required assets before rendering.'}</span>
-                  <div><button type="button" className="asset-secondary-button" onClick={() => openGeneratePlan('visuals')} disabled={working || renderElsewhere}><Icon name="sparkles" size={15} /> Generate all</button><button type="button" onClick={() => setWorkspaceSection('video')} disabled={working || !assetsReady}>Next: Render <Icon name="arrow-right" size={15} /></button></div>
+                  <div><button type="button" className="asset-secondary-button" onClick={() => openGeneratePlan('visuals')} disabled={working || renderElsewhere}><Icon name="sparkles" size={15} /> Generate all</button><button type="button" onClick={openRenderScreen} disabled={working || !assetsReady || sceneEditsChanged}>Next: Render <Icon name="arrow-right" size={15} /></button></div>
                 </footer>
               </div>
             </div>
@@ -2181,7 +2399,7 @@ export default function Home() {
                   <input id="editor-picture-search" value={selectedVisual.searchQuery} onChange={event => setVisualScenes(items => items.map(item => item.id === selectedVisual.id ? { ...item, searchQuery: event.target.value } : item))} disabled={working} />
                   <button type="button" className="btn-secondary editor-replace-picture" onClick={() => regenerateVisual(selectedVisual)} disabled={working || !selectedVisual.searchQuery.trim()}>{busy === `visual-${selectedVisual.id}` ? 'Replacing…' : 'Search & replace'}</button>
                   <label>Motion</label>
-                  <select disabled value="automatic"><option value="automatic">Automatic slow pan &amp; zoom</option></select>
+                  <select disabled value="automatic"><option value="automatic">Left slide + smooth zoom out</option></select>
                 </> : <div className="editor-inspector-empty"><p>Generate pictures to edit their timing, search and display settings.</p></div>}
               </aside>
             </div>
@@ -2202,7 +2420,7 @@ export default function Home() {
 
             <footer className="unified-editor-footer">
               <div>{hasInvalidScenes ? <span className="save-warning">Every subtitle needs narration.</span> : sceneEditsChanged ? <span className="unsaved-indicator">Save changes to update audio and timing.</span> : <span className="saved-indicator"><Icon name="check" size={13} /> All changes saved</span>}</div>
-              <div><button type="button" className="btn-secondary" onClick={() => { setReviewTab('metadata'); setWorkspaceSection('storyboard'); }} disabled={working}>Script &amp; metadata</button><button type="button" onClick={generateVideo} disabled={working || renderElsewhere || !debate.audioExists || !visualsReady || sceneEditsChanged}>Render video</button></div>
+              <div><button type="button" className="btn-secondary" onClick={() => { setReviewTab('metadata'); setWorkspaceSection('storyboard'); }} disabled={working}>Script &amp; metadata</button><button type="button" onClick={generateVideo} disabled={working || renderElsewhere || !audioReady || !visualsReady || sceneEditsChanged}>Render video</button></div>
             </footer>
           </section>
           )}
@@ -2212,12 +2430,12 @@ export default function Home() {
           <section className="render-screen">
             <header className="copy-review-header render-header">
               <button type="button" className="copy-review-brand" onClick={showProjects} disabled={working}>
-                <span className="brand-mark"><Icon name="play" size={15} /></span><strong>KZR CREATOR STUDIO</strong>
+                <BrandMark /><strong>KZR CREATOR STUDIO</strong>
               </button>
               <div className="copy-review-project"><span>{debate.debateName}</span><strong>{debate.topic}</strong></div>
               <div className="copy-review-header-actions">
                 <span className={completePackReady ? 'saved-indicator' : 'unsaved-indicator'}>{completePackReady ? <><Icon name="check" size={13} /> Videos ready</> : 'Ready to render'}</span>
-                <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
+                <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
               </div>
             </header>
 
@@ -2230,11 +2448,6 @@ export default function Home() {
                   <li className="active"><span>4</span><button type="button"><strong>Render</strong><small>Create the videos</small></button></li>
                   <li><span>5</span><button type="button" onClick={() => setWorkspaceSection('publish')} disabled={!completePackReady}><strong>Publish</strong><small>Download or share</small></button></li>
                 </ol>
-                <div className="copy-sidebar-summary render-summary">
-                  <span>Planned output</span>
-                  <strong>{cfg.outputType === 'youtube' ? `YouTube${cfg.extractReels ? ' + reels' : ''}` : 'Vertical short'}</strong>
-                  <small>{cfg.subtitlesEnabled ? 'Subtitles on' : 'Subtitles off'}{cfg.visualMode === 'infographic' ? ` · Titles ${cfg.sceneTitleMode === 'intro' ? '3 sec' : cfg.sceneTitleMode}` : ''}</small>
-                </div>
               </aside>
 
               <div className="render-main">
@@ -2255,7 +2468,6 @@ export default function Home() {
                     <div className={`render-player ${cfg.outputType === 'short' ? 'portrait' : ''}`}>
                       {debate.videoExists ? <video controls src={`/api/debate/${name}/video?t=${nonce}`} /> : <div className="render-player-empty"><span><Icon name="play" size={28} /></span><strong>Your preview will appear here</strong><p>Everything is prepared. Start the render when you are ready.</p></div>}
                     </div>
-                    {job && (job.kind === 'video' || job.kind === 'reels') && <div className="render-inline-progress"><span className="job-spinner" /><div><strong>{job.kind === 'video' ? 'Rendering the main video…' : 'Building reels and shorts…'}</strong><p>{job.logs?.at(-1) || 'FFmpeg is assembling the final output.'}</p></div></div>}
                     <div className="render-preview-actions">
                       <button type="button" onClick={generateVideo} disabled={working || renderElsewhere || !assetsReady}><Icon name="play" size={15} /> {job?.kind === 'video' ? 'Rendering…' : debate.videoExists ? 'Render video again' : 'Render video'}</button>
                       {cfg.outputType === 'youtube' && cfg.extractReels && <button type="button" className="extract-shorts-button" onClick={extractAndRenderShorts} disabled={working || renderElsewhere || !debate.videoExists}><Icon name="sparkles" size={15} /> {job?.kind === 'reels' ? 'Extracting…' : reelsReady ? 'Extract shorts again' : 'Extract shorts'}</button>}
@@ -2332,12 +2544,12 @@ export default function Home() {
           <section className="publish-screen">
             <header className="copy-review-header publish-header">
               <button type="button" className="copy-review-brand" onClick={showProjects} disabled={working}>
-                <span className="brand-mark"><Icon name="play" size={15} /></span><strong>KZR CREATOR STUDIO</strong>
+                <BrandMark /><strong>KZR CREATOR STUDIO</strong>
               </button>
               <div className="copy-review-project"><span>{debate.debateName}</span><strong>{debate.topic}</strong></div>
               <div className="copy-review-header-actions">
                 <span className="saved-indicator"><Icon name="check" size={13} /> Ready to publish</span>
-                <button className="icon-button" type="button" onClick={() => selectTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button>
+                <ThemeToggle theme={theme} onToggle={() => selectTheme(theme === 'light' ? 'dark' : 'light')} />
               </div>
             </header>
 
@@ -2350,7 +2562,6 @@ export default function Home() {
                   <li className="complete"><span><Icon name="check" size={14} /></span><button type="button" onClick={() => setWorkspaceSection('video')}><strong>Render</strong><small>Videos created</small></button></li>
                   <li className="active"><span>5</span><button type="button"><strong>Publish</strong><small>Download or share</small></button></li>
                 </ol>
-                <div className="copy-sidebar-summary publish-summary"><span>Final output</span><strong>{cfg.outputType === 'youtube' ? `1 video${cfg.extractReels ? ` + ${plannedReels} shorts` : ''}` : '1 vertical video'}</strong><small>Stored locally and ready</small></div>
               </aside>
 
               <div className="publish-main">

@@ -36,6 +36,10 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
     strokeLinejoin: 'round' as const,
     className,
     'aria-hidden': true,
+    // Browser colour extensions such as Dark Reader add inline SVG attributes
+    // before React hydrates. The icon remains equivalent, so ignore that
+    // extension-only attribute mismatch at this boundary.
+    suppressHydrationWarning: true,
   };
 
   switch (name) {

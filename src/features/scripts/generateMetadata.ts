@@ -36,6 +36,8 @@ export async function generateMetadata(
       script: scriptContent,
     }),
     label: 'metadata generation',
+    projectId: debateName,
+    projectTitle: topic,
   });
   const parts = [...generated.data.reels].sort((a, b) => a.part - b.part);
   if (parts.some((reel, index) => reel.part !== index + 1)) {

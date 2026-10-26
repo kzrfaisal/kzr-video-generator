@@ -26,8 +26,9 @@ function isInfographicProject(debateName: string): boolean {
 }
 
 /** Topic-photo thumbnail used by the single-narrator infographic workflow. */
-function generateExplainerThumbnail(debateName: string, hook: string, fontfile: string): void {
-  const scene = readVisualPlan(debateName)?.scenes.find(item => item.imagePath && fs.existsSync(item.imagePath));
+function generateExplainerThumbnail(debateName: string, hook: string, fontfile: string, variant = 0): void {
+  const availableScenes = readVisualPlan(debateName)?.scenes.filter(item => item.imagePath && fs.existsSync(item.imagePath)) ?? [];
+  const scene = availableScenes.length > 0 ? availableScenes[Math.abs(Math.trunc(variant)) % availableScenes.length] : undefined;
   if (!scene?.imagePath) {
     throw new Error('Generate the infographic visual scenes before creating its thumbnail.');
   }
@@ -104,7 +105,7 @@ function readHookFromMetadata(debateName: string): string {
   return lines.join('\n');
 }
 
-export function generateThumbnail(debateName: string): void {
+export function generateThumbnail(debateName: string, variant = 0): void {
   const hook = readHookFromMetadata(debateName);
 
   const tf = config.thumbnailFont;
@@ -115,7 +116,7 @@ export function generateThumbnail(debateName: string): void {
 
   if (readContentMode(debateName) === 'narrated-explainer' && isInfographicProject(debateName)) {
     ensureDir('tmp');
-    generateExplainerThumbnail(debateName, hook, fontfile);
+    generateExplainerThumbnail(debateName, hook, fontfile, variant);
     return;
   }
 

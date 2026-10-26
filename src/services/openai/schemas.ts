@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+export const GeneratedBriefSchema = z.object({
+  title: z.string().min(1).max(120),
+  description: z.string().min(1).max(1000),
+  thumbnailHook: z.string().min(1).max(80),
+});
+
 export const GeneratedSubtitleSchema = z.object({
   speaker: z.enum(['HOST', 'A', 'B']),
   narration: z.string().min(1).max(500),
@@ -39,5 +45,6 @@ export const GeneratedVisualPlanSchema = z.object({
 });
 
 export type GeneratedScript = z.infer<typeof GeneratedScriptSchema>;
+export type GeneratedBrief = z.infer<typeof GeneratedBriefSchema>;
 export type GeneratedMetadata = z.infer<typeof GeneratedMetadataSchema>;
 export type GeneratedVisualPlan = z.infer<typeof GeneratedVisualPlanSchema>;

@@ -91,6 +91,7 @@ function fallbackQuery(topic: string, text: string): string {
 }
 
 async function createPlanCopy(
+  projectId: string,
   topic: string,
   context: string,
   groups: SceneGroup[],
@@ -104,6 +105,8 @@ async function createPlanCopy(
     developerPrompt: visualDeveloperPrompt(narrated),
     userPrompt: visualUserPrompt({ title: topic, context, scenes: compact }),
     label: 'visual scene plan',
+    projectId,
+    projectTitle: topic,
   });
   if (generated.data.scenes.length !== groups.length) {
     throw new Error('Visual planner returned the wrong number of scenes.');
@@ -291,7 +294,7 @@ export async function generateVisualScenes(debateName: string): Promise<VisualPl
   let copy: Array<{ headline: string; searchQuery: string }>;
   let visualResponseId: string | null = null;
   try {
-    const generatedCopy = await createPlanCopy(project.title || debateName, project.context, groups, narrated);
+    const generatedCopy = await createPlanCopy(debateName, project.title || debateName, project.context, groups, narrated);
     copy = generatedCopy.scenes;
     visualResponseId = generatedCopy.responseId;
   } catch (error) {
@@ -365,7 +368,7 @@ export async function regenerateVisualScene(debateName: string, sceneId: string,
   return scene;
 }
 
-function originalLineIndex(debateName: string, lineIndex: number): number {
+export function originalLineIndex(debateName: string, lineIndex: number): number {
   const base = debateName.split('/').pop() ?? debateName;
   const match = base.match(/^(.+)_part(\d+)$/);
   if (!match) return lineIndex;

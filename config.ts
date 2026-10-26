@@ -63,7 +63,7 @@ export const STYLES: Record<string, SubtitleStyle> = {
     bordercolor: 'black', borderw: 5,
     position: 'center', margin: 0,
     wrapWidth: 32, lineHeight: 95,
-    // font: 'assets/fonts/Segoe UI.ttf',
+    // font: 'assets/fonts/Nunito-Regular.ttf',
   },
   // 9:16 reels/shorts — upper-third placement, mobile-readable size, wraps tight so 4-5 lines fit
   'reels-top': {
@@ -202,7 +202,7 @@ const baseConfig: Config = {
     A: 'top-classic',
     B: 'top-classic',
   },
-  font: 'assets/fonts/Segoe UI Italic.ttf',
+  font: 'assets/fonts/Nunito-Regular.ttf',
   subtitleLineHeight: 50,
   subtitleWrapWidth: 78,
   subtitlesEnabled: true,
@@ -219,15 +219,12 @@ const baseConfig: Config = {
   generateThumbnail: true,
   thumbnailBackground: 'assets/images/image_H.png',
   thumbnailFont: {
-    // font: 'assets/fonts/Anton-Regular.ttf',
-    // label: { size: 45, color: '0xD3D3D3', x: '80',          y: '60' },
-    // hook:  { size: 65, color: '0x7ff217', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
-    font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
+    font: 'assets/fonts/Nunito-Regular.ttf',
     label: { size: 40, color: '0xD3D3D3', x: '80',          y: '60' },
     hook:  { size: 65, color: '0xFFFFFF', x: '(w-text_w)/2', y: '(h-text_h)/2-80' },
   },
   bannerFont: {
-    font: 'assets/fonts/Unbounded-VariableFont_wght.ttf',
+    font: 'assets/fonts/Nunito-Regular.ttf',
     size: 52,
     color: '0xFFFFFF',
     wrapWidth: 24,
@@ -269,7 +266,7 @@ export const VIDEO_STYLES: Record<string, Partial<Config>> = {
     },
   },
 
-  // 9:16 Reels/Shorts preset. User supplies portrait assets under assets/images/reels/.
+  // 9:16 Reels/Shorts preset with dedicated portrait assets.
   style3: {
     isReelStyle: true,
     videoLengthTarget: '30-60 seconds',

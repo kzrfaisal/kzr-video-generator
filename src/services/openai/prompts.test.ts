@@ -2,13 +2,34 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SCRIPT_PROMPT_FIXTURES } from './promptFixtures';
 import {
+  BRIEF_PROMPT_VERSION,
   METADATA_PROMPT_VERSION,
   SCRIPT_PROMPT_VERSION,
   VISUAL_PROMPT_VERSION,
+  briefDeveloperPrompt,
+  briefUserPrompt,
   scriptDeveloperPrompt,
   scriptUserPrompt,
 } from './prompts';
-import { GeneratedMetadataSchema, GeneratedScriptSchema, GeneratedVisualPlanSchema } from './schemas';
+import { GeneratedBriefSchema, GeneratedMetadataSchema, GeneratedScriptSchema, GeneratedVisualPlanSchema } from './schemas';
+
+test('creates explainer briefs for the selected format', () => {
+  const developer = briefDeveloperPrompt('narrated-explainer');
+  const user = briefUserPrompt('narrated-explainer');
+  assert.match(developer, new RegExp(BRIEF_PROMPT_VERSION));
+  assert.match(developer, /narrated explainer/);
+  assert.ok(user.includes('narrated-explainer'));
+  assert.equal(GeneratedBriefSchema.safeParse({
+    title: 'How El Niño Can Make Everything More Expensive',
+    description: 'Warm Pacific water can create global economic consequences.',
+    thumbnailHook: 'WHY EVERYTHING COSTS MORE',
+  }).success, true);
+});
+
+test('creates debate briefs around two defensible positions', () => {
+  assert.match(briefDeveloperPrompt('debate'), /two genuinely defensible opposing positions/);
+  assert.ok(briefUserPrompt('debate').includes('debate'));
+});
 
 test('keeps application rules in the developer prompt and creator data in the user prompt', () => {
   for (const fixture of SCRIPT_PROMPT_FIXTURES) {

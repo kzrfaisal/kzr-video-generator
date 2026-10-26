@@ -8,6 +8,8 @@ const USAGE_LEDGER = 'output/usage/openai-usage.jsonl';
 export interface OpenAIUsageEvent {
   id: string;
   createdAt: string;
+  projectId?: string;
+  projectTitle?: string;
   operation: string;
   model: string;
   inputTokens: number;
@@ -26,12 +28,30 @@ export interface OpenAIUsageSummary {
   exchangeRateAsOf: string;
 }
 
+function readEvents(): OpenAIUsageEvent[] {
+  const events: OpenAIUsageEvent[] = [];
+  if (!fs.existsSync(USAGE_LEDGER)) return events;
+  for (const line of fs.readFileSync(USAGE_LEDGER, 'utf-8').split('\n')) {
+    if (!line.trim()) continue;
+    try { events.push(JSON.parse(line) as OpenAIUsageEvent); }
+    catch { /* Ignore one damaged line without hiding the rest of the usage history. */ }
+  }
+  return events;
+}
+
+/** Newest-first call history for the local activity screen. */
+export function readUsageEvents(limit = 250): OpenAIUsageEvent[] {
+  return readEvents().slice(-Math.max(0, limit)).reverse();
+}
+
 function append(event: OpenAIUsageEvent): void {
   fs.mkdirSync(path.dirname(USAGE_LEDGER), { recursive: true });
   fs.appendFileSync(USAGE_LEDGER, `${JSON.stringify(event)}\n`, 'utf-8');
 }
 
 export function recordTextUsage(input: {
+  projectId?: string;
+  projectTitle?: string;
   operation: string;
   model: string;
   inputTokens: number;
@@ -43,6 +63,8 @@ export function recordTextUsage(input: {
   const event: OpenAIUsageEvent = {
     id: randomUUID(),
     createdAt: new Date().toISOString(),
+    projectId: input.projectId,
+    projectTitle: input.projectTitle,
     operation: input.operation,
     model: input.model,
     inputTokens: input.inputTokens,
@@ -58,6 +80,8 @@ export function recordTextUsage(input: {
 }
 
 export function recordSpeechUsage(input: {
+  projectId?: string;
+  projectTitle?: string;
   operation: string;
   model: string;
   characters: number;
@@ -66,6 +90,8 @@ export function recordSpeechUsage(input: {
   const event: OpenAIUsageEvent = {
     id: randomUUID(),
     createdAt: new Date().toISOString(),
+    projectId: input.projectId,
+    projectTitle: input.projectTitle,
     operation: input.operation,
     model: input.model,
     inputTokens: 0,
@@ -81,14 +107,7 @@ export function recordSpeechUsage(input: {
 }
 
 export function readUsageSummary(): OpenAIUsageSummary {
-  const events: OpenAIUsageEvent[] = [];
-  if (fs.existsSync(USAGE_LEDGER)) {
-    for (const line of fs.readFileSync(USAGE_LEDGER, 'utf-8').split('\n')) {
-      if (!line.trim()) continue;
-      try { events.push(JSON.parse(line) as OpenAIUsageEvent); }
-      catch { /* Ignore one damaged line without hiding the rest of the usage history. */ }
-    }
-  }
+  const events = readEvents();
 
   const total = events.reduce((sum, event) => ({
     calls: sum.calls + 1,
