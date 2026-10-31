@@ -1,21 +1,79 @@
-# kzr-video-generator
+# KZR Video Generator
 
-TypeScript/Node.js app that generates narrated explainer or debate videos from a text topic.
+A local-first AI video studio that turns a topic into a narrated explainer or two-sided debate, then produces a thumbnail, voice-over, long-form video, and three vertical social clips.
 
-**Stack:** Node.js, TypeScript (tsx), OpenAI GPT-4o-mini (script), OpenAI TTS tts-1 (audio), ffmpeg (video)
+The project includes a guided Next.js interface and a scriptable TypeScript CLI. Generation runs on your machine: OpenAI creates structured scripts and speech, Pexels can supply optional stock photography, and FFmpeg assembles the final media.
 
----
+![KZR Creator Studio interface preview](docs/images/kzr-creator-studio.svg)
 
-## Setup
+> [!IMPORTANT]
+> This is a single-user local application, not a hardened multi-tenant service. Its API routes can start paid model calls and access local project files. Do not expose it directly to the public internet.
+
+## What it can do
+
+- Create narrated explainers or host-led debates from a topic and creative brief.
+- Review and edit scripts, metadata, thumbnails, and scene visuals between stages.
+- Render long-form landscape videos and three portrait reels/shorts.
+- Resume failed stages without repeating completed work.
+- Track estimated model usage and per-stage timing.
+- Optionally publish finished media to YouTube and Instagram.
+
+## Requirements
+
+- Node.js 20.9 or newer
+- npm
+- FFmpeg and FFprobe available on `PATH`
+- An OpenAI API key with billing enabled
+- Optional: a Pexels API key and social publishing credentials
+
+## Quick start
 
 ```bash
+git clone https://github.com/kzrfaisal/kzr-video-generator.git
+cd kzr-video-generator
 npm install
+cp .env.example .env
 ```
 
-Create a `.env` file with your OpenAI API key:
+Add `OPENAI_API_KEY` to `.env`, then start the guided interface:
+
+```bash
+npm run next:dev
 ```
-OPENAI_API_KEY=sk-...
+
+Open `http://localhost:3000`. API usage can incur charges, so review the selected models and video settings before starting a full run.
+
+To verify a checkout without making paid API calls:
+
+```bash
+npm run typecheck
+npm test
+npm run next:build
 ```
+
+## Configuration and credentials
+
+Copy `.env.example` to `.env`. The local `.env` file is ignored by Git and must never be committed.
+
+| Variable | Required | Purpose |
+|---|---:|---|
+| `OPENAI_API_KEY` | Yes | Structured script generation and text-to-speech |
+| `PEXELS_API_KEY` | No | Topic-specific stock photos for infographic scenes |
+| `YOUTUBE_*` | No | YouTube upload credentials and defaults |
+| `INSTAGRAM_*`, `META_GRAPH_VERSION` | No | Instagram publishing credentials and defaults |
+
+All non-secret rendering defaults live in [`config.ts`](config.ts).
+
+## Project status
+
+KZR Video Generator is an early open-source project built for trusted local use. Expect active changes to workflows and file formats. See [`docs/open-source-launch.md`](docs/open-source-launch.md) for the remaining release gates.
+
+- Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security and deployment warning: [`SECURITY.md`](SECURITY.md)
+- Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Third-party assets: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+
+Released under the [MIT License](LICENSE). Bundled third-party assets retain their own licenses as listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Local web app and automatic publishing
 
@@ -110,7 +168,7 @@ can be retried without rerunning completed stages. See [pipeline reliability](do
 | `generateMetadata` | `true` | When `true`, the script stage also produces `debateN.metadata.md` (YouTube title, description, hashtags, 3 reel captions). Hashtags are generated without web search; reel captions are prefixed with `Part N - <YouTube title>`. Costs one additional `scriptModel` call. Set to `false` to skip. |
 | `generateThumbnail` | `true` | When `true`, the script stage also renders a 1280×720 `debateN.thumbnail.jpg` using `thumbnailBackground` + the `## Thumbnail Hook` line from the metadata file. Requires `generateMetadata: true`. No extra OpenAI call. |
 | `thumbnailBackground` | `'assets/images/image_H.png'` | Background image overlaid with the `DEBATE` label + center hook text by ffmpeg `drawtext`. Any 16:9 image works; non-16:9 is letterboxed with black bars. |
-| `thumbnailFont` | `{ font, label: { size, color, x, y }, hook: { size, color, x, y } }` | Object holding the thumbnail's `.ttf` font plus per-element `size`, `color`, `x`, `y` for the `label` and the `hook`. `color` accepts named colors (`white`, `gold`), hex (`0xFF6B35`), or `name@alpha`. `x`/`y` accept raw pixels (`'80'`) **or** ffmpeg drawtext expressions: `w`/`h` = canvas size (1280/720), `text_w`/`text_h` = rendered text size — so `(w-text_w)/2` centers horizontally and `(h-text_h)/2-80` centers vertically then shifts up 80px. Kept separate from `font` so subtitle styling is unaffected. Heavy/display faces (Anton, Bebas Neue, Impact, Montserrat Black) work best at thumbnail scale. |
+| `thumbnailFont` | `{ font, label: { size, color, x, y }, hook: { size, color, x, y } }` | Object holding the thumbnail's `.ttf` font plus per-element `size`, `color`, `x`, `y` for the `label` and the `hook`. `color` accepts named colors (`white`, `gold`), hex (`0xFF6B35`), or `name@alpha`. `x`/`y` accept raw pixels (`'80'`) **or** ffmpeg drawtext expressions: `w`/`h` = canvas size (1280/720), `text_w`/`text_h` = rendered text size — so `(w-text_w)/2` centers horizontally and `(h-text_h)/2-80` centers vertically then shifts up 80px. Kept separate from `font` so subtitle styling is unaffected. |
 | `bannerFont` | `{ font, size, color, wrapWidth, lineHeight, glow? }` | Styling for the persistent `Part N - <title>` banner shown vertically centered on reel videos. Mirrors the thumbnail hook look: a solid fill over a soft glow. `font` is a `.ttf` path — ffmpeg has no bold flag, so pick a bold/heavy face for a bold look. `color` accepts named/hex/`name@alpha`. `glow` = `{ color, passes: [{ w, a }] }` renders a halo behind the text (stacked drawtext passes, widest/faintest first) — omit for no glow. Kept separate from `font` so the banner can look distinct from the subtitles. Only rendered for reels. |
 
 ### Subtitles
@@ -118,7 +176,7 @@ can be retried without rerunning completed stages. See [pipeline reliability](do
 | Field | Default | Notes |
 |---|---|---|
 | `subtitleStyle` | `{ HOST, A, B }` | Per-speaker map → key from the `STYLES` map in `config.ts`. Default has every speaker on `top-classic`. |
-| `font` | `'assets/fonts/Segoe UI Italic.ttf'` | Default font; can be overridden per style. |
+| `font` | `'assets/fonts/Nunito-Regular.ttf'` | Default font; can be overridden per style. |
 | `subtitleLineHeight` | `50` | Default gap (px) between stacked subtitle lines. |
 | `subtitleWrapWidth` | `72` | Default max characters per line before wrapping. |
 
@@ -340,18 +398,19 @@ When `config.createTransitionVideos === true` and `config.includeTransitionVideo
 
 | Path | Description |
 |---|---|
-| `assets/images/image_H.png` | HOST portrait (used by `style1`) |
-| `assets/images/image_A.png` | Speaker A portrait (`style1` and `style2`) |
-| `assets/images/image_B.png` | Speaker B portrait (`style1` and `style2`) |
-| `assets/images/image_H_style2.png` | Abstract HOST background (used by `style2`) |
-| `assets/images/reels/image_H.png` | Portrait HOST image for `style3` (9:16) |
-| `assets/images/reels/image_A.png` | Portrait Speaker A image for `style3` |
-| `assets/images/reels/image_B.png` | Portrait Speaker B image for `style3` |
+| `assets/images/image_H.png` | AI-generated HOST portrait used by `style1` |
+| `assets/images/image_A.png` | AI-generated Speaker A portrait used by `style1` and `style2` |
+| `assets/images/image_B.png` | AI-generated Speaker B portrait used by `style1` and `style2` |
+| `assets/images/image_H_style2.png` | AI-generated abstract HOST background used by `style2` |
+| `assets/images/image_H_style3.png` | AI-generated infographic fallback for portrait videos |
+| `assets/images/reels/image_H.png` | AI-generated portrait HOST image used by `style3` |
+| `assets/images/reels/image_A.png` | AI-generated portrait Speaker A image used by `style3` |
+| `assets/images/reels/image_B.png` | AI-generated portrait Speaker B image used by `style3` |
 | `assets/videos/transition_*.mp4` | 6 transition clips (H↔A, H↔B, A↔B) |
-| `assets/fonts/*.ttf` | Subtitle fonts (referenced from `config.font` or per-style `font`) |
+| `assets/fonts/Nunito-Regular.ttf` | Bundled OFL-licensed font for subtitles, thumbnails, and banners |
 | `assets/audios/transition_audio.wav` | Audio attached to transition clips |
 
-> Tip: For 16:9 styles keep speaker images close to ~1380×752 (matching dimensions across all three). For `style3` use portrait 1080×1920 images. Oversize images (e.g. 5000×3000) drastically slow ffmpeg encoding.
+> Tip: For 16:9 styles keep speaker images close to ~1380×752 (matching dimensions across all three). For `style3` use portrait 1080×1920 images. Oversize images (for example 5000×3000) drastically slow FFmpeg encoding.
 
 > Note: Regenerate transitions (`npm run transitions`) after switching `videoStyle` between 16:9 and `style3`, since the active `videoStyle`'s `images` map and aspect ratio are baked into the transition clips.
 

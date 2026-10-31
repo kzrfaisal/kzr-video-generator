@@ -6,6 +6,7 @@ import { ensureDir } from '@/src/shared/utils';
 import { config } from '@/config';
 import type { ContentMode } from '@/src/features/projects/contentMode';
 import { recordSpeechUsage } from '@/src/services/openai/usageLedger';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 const client = new OpenAI();
 
@@ -38,7 +39,7 @@ export function outroText(partIndex: number, contentMode: ContentMode): string {
     : HOST_OUTRO_TEXT[variation];
 }
 
-export async function ensureOutroAudio(partIndex: number, contentMode: ContentMode = 'debate'): Promise<string> {
+export async function ensureOutroAudio(partIndex: number, contentMode: ContentMode = 'debate', projectId?: string): Promise<string> {
   ensureDir(OUTRO_DIR);
   const variation = Math.abs(partIndex) % 3;
   const prefix = contentMode === 'narrated-explainer' ? 'explainer' : 'host';
@@ -56,7 +57,12 @@ export async function ensureOutroAudio(partIndex: number, contentMode: ContentMo
     speed: config.ttsSpeed,
   });
   const buffer = Buffer.from(await response.arrayBuffer());
+  const projectTitle = projectId
+    ? (() => { try { return readProjectDocument(projectId).title; } catch { return projectId; } })()
+    : 'Studio tools';
   recordSpeechUsage({
+    projectId: projectId ?? 'studio-tools',
+    projectTitle,
     operation: 'reel outro audio',
     model: config.ttsModel,
     characters: text.length,

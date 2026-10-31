@@ -120,6 +120,11 @@ export async function run(
   metadata: MetadataResult;
 }> {
   ensureDir('output/debates');
+  const existing = fs.readdirSync('output/debates')
+    .filter((file: string) => file.startsWith('debate') && file.endsWith('.txt'))
+    .map((file: string) => parseInt(file.replace('debate', '').replace('.txt', ''), 10))
+    .filter((number: number) => !Number.isNaN(number));
+  const debateName = `debate${(existing.length > 0 ? Math.max(...existing) : 0) + 1}`;
   const targets = generationTargets(preferences);
   const promptInput = (validationFeedback?: string, previousDraft?: GeneratedScript) => scriptUserPrompt({
       title: topic,
@@ -145,6 +150,8 @@ export async function run(
     developerPrompt: scriptDeveloperPrompt(contentMode, config.isReelStyle),
     userPrompt: promptInput(),
     label: 'script generation',
+    projectId: debateName,
+    projectTitle: topic,
   });
   let inputTokens = generated.usage.inputTokens;
   let cachedInputTokens = generated.usage.cachedInputTokens;
@@ -164,6 +171,8 @@ export async function run(
         generated.data,
       ),
       label: `script duration correction ${attempt}`,
+      projectId: debateName,
+      projectTitle: topic,
     });
     inputTokens += generated.usage.inputTokens;
     cachedInputTokens += generated.usage.cachedInputTokens;
@@ -222,13 +231,6 @@ export async function run(
   }));
   const content = scenes.map(scene => `${scene.speaker}|${scene.narration}`).join('\n') + '\n';
 
-  const existing = fs.readdirSync('output/debates')
-    .filter((f: string) => f.startsWith('debate') && f.endsWith('.txt'))
-    .map((f: string) => parseInt(f.replace('debate', '').replace('.txt', ''), 10))
-    .filter((n: number) => !isNaN(n));
-
-  const nextNumber = (existing.length > 0 ? Math.max(...existing) : 0) + 1;
-  const debateName = `debate${nextNumber}`;
   const project = createProjectDocument({
     id: debateName,
     title: topic,

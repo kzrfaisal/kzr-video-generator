@@ -107,9 +107,9 @@ function applySavedReelVisualMode(debateName: string) {
 }
 
 /** Thumbnail only — renders the JPG from the metadata hook. */
-export async function runThumbnail(debateName: string): Promise<string> {
+export async function runThumbnail(debateName: string, variant = 0): Promise<string> {
   applySavedConfig(debateName);
-  generateThumbnail(debateName);
+  generateThumbnail(debateName, variant);
   return publishThumbnail(debateName);
 }
 
@@ -170,7 +170,9 @@ if (require.main === module) {
   } else if (sub === 'thumbnail') {
     const debateName = process.argv[3];
     if (!debateName) fail('Usage: tsx src/features/pipeline/runPipeline.ts thumbnail <debateName>');
-    runThumbnail(debateName).then(p => console.log(`@@THUMB@@ ${p}`)).catch(die);
+    const variantArg = process.argv.find(arg => arg.startsWith('--variant='))?.split('=')[1];
+    const variant = variantArg && Number.isFinite(Number(variantArg)) ? Number(variantArg) : 0;
+    runThumbnail(debateName, variant).then(p => console.log(`@@THUMB@@ ${p}`)).catch(die);
 
   } else if (sub === 'audio') {
     const debateName = process.argv[3];

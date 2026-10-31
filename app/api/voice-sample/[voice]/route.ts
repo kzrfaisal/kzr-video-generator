@@ -27,6 +27,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ voice: 
       });
       const audio = Buffer.from(await resp.arrayBuffer());
       recordSpeechUsage({
+        projectId: 'studio-tools',
+        projectTitle: 'Studio tools',
         operation: 'voice sample',
         model: 'tts-1',
         characters: SAMPLE_TEXT.length,

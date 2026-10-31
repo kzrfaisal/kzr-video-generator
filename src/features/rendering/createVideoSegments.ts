@@ -5,8 +5,9 @@ import { ensureDir, wrapText, parseDebateFile } from '@/src/shared/utils';
 import { config, STYLES, SubtitleStyle, type SceneTitleMode } from '@/config';
 import { publishMetadata } from '@/src/shared/filesystem/paths';
 import { createInfographicOverlay } from '@/src/features/visuals/infographic';
-import { visualSceneForLine } from '@/src/features/visuals/visualScenes';
+import { originalLineIndex, visualSceneForLine } from '@/src/features/visuals/visualScenes';
 import { buildRenderCaptions } from '@/src/domain/projects/captions';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 function lineY(lineIndex: number, lineCount: number, style: SubtitleStyle): string {
   const lh = style.lineHeight ?? config.subtitleLineHeight;
@@ -106,14 +107,14 @@ function audioDuration(file: string): number {
   return Number.parseFloat(result.stdout.trim());
 }
 
-/** Alternate eased zoom-in/LTR and zoom-out/RTL motion for each new image. */
-function photoMotionFilter(portrait: boolean, lineIndex: number, elapsedSec: number): string {
+/** Consistent eased zoom-out with a leftward image slide. */
+function photoMotionFilter(portrait: boolean, _lineIndex: number, elapsedSec: number): string {
   const offset = Math.max(0, Math.round(elapsedSec * config.fps));
   const easeFrames = config.fps * 15;
   const ease = `(0.5-0.5*cos(PI*min((on+${offset})/${easeFrames}\\,1)))`;
-  const zoomIn = Math.floor(lineIndex / 3) % 2 === 0;
-  const zoom = zoomIn ? `1+0.12*${ease}` : `1.12-0.12*${ease}`;
-  const xFactor = zoomIn ? `0.12+0.76*${ease}` : `0.88-0.76*${ease}`;
+  const zoom = `1.14-0.11*${ease}`;
+  // Move the crop window right while zooming out, which makes the picture slide left.
+  const xFactor = `0.05+0.90*${ease}`;
   const canvas = portrait ? '4320:7680' : '7680:4320';
   const output = portrait ? '1080x1920' : '1920x1080';
   return [
@@ -289,6 +290,11 @@ export function run(debateName: string): void {
   const segmentExt = config.transitionStyle === 'fade-pcm' ? 'mkv' : 'mp4';
   const D = config.transitionDuration;
   const sceneElapsed = new Map<string, number>();
+  const shownSectionTitles = new Set<string>();
+  const parentProjectName = (debateName.split('/').pop() ?? debateName).replace(/_part\d+$/, '');
+  let projectScenes: ReturnType<typeof readProjectDocument>['scenes'] = [];
+  try { projectScenes = readProjectDocument(parentProjectName).scenes; }
+  catch { /* Legacy scripts fall back to visual-scene title grouping below. */ }
 
   files.forEach((file: string, idx: number) => {
     const speaker = speakerOf(file);
@@ -316,7 +322,10 @@ export function run(debateName: string): void {
     const audioPath = path.join(audioDir, file);
     const segmentPath = path.join(segmentsDir, `segment_${String(idx).padStart(3, '0')}_${speaker}.${segmentExt}`);
     const sceneKey = plannedScene?.id ?? `line-${idx}`;
-    const sceneTitleMode = config.sceneTitleMode === 'intro' && sceneElapsed.has(sceneKey)
+    const sourceScene = projectScenes[originalLineIndex(debateName, lines[idx].sourceLineIndex)];
+    const sectionKey = sourceScene?.sectionId ?? plannedScene?.id ?? `line-${lines[idx].sourceLineIndex}`;
+    const sceneHeadline = sourceScene?.headline.trim() || plannedScene?.headline;
+    const sceneTitleMode = config.sceneTitleMode === 'intro' && shownSectionTitles.has(sectionKey)
       ? 'hidden'
       : config.sceneTitleMode;
     const motionOffsetSec = sceneElapsed.get(sceneKey) ?? 0;
@@ -326,9 +335,10 @@ export function run(debateName: string): void {
     createSegment(
       speaker, debateName, idx, files.length, sceneImage, audioPath, text,
       segmentPath, styleName, startPadSec, endPadSec, bannerText,
-      hasScenePhoto, plannedScene?.headline, motionOffsetSec, speechDurationSec,
+      hasScenePhoto, sceneHeadline, motionOffsetSec, speechDurationSec,
       sceneTitleMode,
     );
+    if (sceneTitleMode === 'intro' && sceneHeadline) shownSectionTitles.add(sectionKey);
     // xfade overlaps the outgoing and incoming clips. Move the next clip's
     // camera clock back by that overlap so the photo stays pixel-aligned while
     // the speaker label and subtitles dissolve between each other.

@@ -29,6 +29,8 @@ export async function generateStructured<T>(input: {
   developerPrompt: string;
   userPrompt: string;
   label: string;
+  projectId?: string;
+  projectTitle?: string;
 }): Promise<StructuredResult<T>> {
   const response = await withRetry(() => openAIClient().responses.parse({
     model: input.model,
@@ -48,6 +50,8 @@ export async function generateStructured<T>(input: {
     outputTokens: response.usage?.output_tokens ?? 0,
   };
   recordTextUsage({
+    projectId: input.projectId,
+    projectTitle: input.projectTitle,
     operation: input.label,
     model: input.model,
     ...usage,

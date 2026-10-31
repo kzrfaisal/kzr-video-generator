@@ -1,6 +1,7 @@
 import type { ContentMode } from '../../domain/projects/types';
 
 export const SCRIPT_PROMPT_VERSION = 'script-v3.5.0';
+export const BRIEF_PROMPT_VERSION = 'brief-v1.0.0';
 export const METADATA_PROMPT_VERSION = 'metadata-v2.0.0';
 export const VISUAL_PROMPT_VERSION = 'visual-v2.0.0';
 
@@ -44,6 +45,27 @@ export function scriptDeveloperPrompt(contentMode: ContentMode, shortForm = fals
     contentMode === 'narrated-explainer' ? EXPLAINER_RULES : DEBATE_RULES,
     shortFormRules,
   ].join('\n\n');
+}
+
+export function briefDeveloperPrompt(contentMode: ContentMode): string {
+  const formatRules = contentMode === 'debate'
+    ? 'Invent a compelling question or proposition with two genuinely defensible opposing positions. Frame both sides impartially and identify the central tension.'
+    : 'Invent an interesting informative topic suitable for a narrated explainer using concrete stock visuals. Present a clear cause-and-effect, chronological, or conceptual journey.';
+  return `Prompt version: ${BRIEF_PROMPT_VERSION}
+You invent an original, broadly interesting video idea and turn it into a concise production brief.
+${formatRules}
+Write an engaging, specific title that accurately represents the topic without dishonest clickbait.
+Write a self-contained description in two short paragraphs: first explain the premise, then explain the main chain, questions, or value the video will cover. Keep it under 900 characters.
+Write a thumbnail hook of 3-6 punchy words in uppercase, with no hashtags, quotation marks, or punctuation.
+Choose established, evergreen knowledge that does not require live web research. Do not invent facts, statistics, dates, sources, or unsupported claims.
+Return only the structured fields requested by the schema.`;
+}
+
+export function briefUserPrompt(contentMode: ContentMode): string {
+  return JSON.stringify({
+    task: 'Invent one original video topic and create its complete project brief.',
+    contentMode,
+  }, null, 2);
 }
 
 export function scriptUserPrompt(input: {

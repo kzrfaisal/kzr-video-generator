@@ -8,7 +8,7 @@ import { markStageCompleted, markStageFailed, markStageRunning } from '@/src/inf
 export const runtime = 'nodejs';
 
 // POST — render the thumbnail from the metadata hook (quick, ffmpeg only).
-export async function POST(_req: Request, { params }: { params: Promise<{ name: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   if (!isValidDebateName(name)) {
     return NextResponse.json({ error: 'Invalid debate name.' }, { status: 400 });
@@ -17,8 +17,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ name: 
     return NextResponse.json({ error: 'Generate metadata first (the thumbnail uses its hook).' }, { status: 409 });
   }
 
+  const body = await request.json().catch(() => ({}));
+  const requestedVariant = Number(body.variant ?? 0);
+  const variant = Number.isFinite(requestedVariant) ? Math.max(0, Math.trunc(requestedVariant)) : 0;
+
   markStageRunning(name, 'thumbnail');
-  const result = await runStage(['thumbnail', name]);
+  const result = await runStage(['thumbnail', name, `--variant=${variant}`]);
   if (!result.ok || !fs.existsSync(publishThumbnail(name))) {
     markStageFailed(name, 'thumbnail', result.output.slice(-600) || 'Thumbnail generation failed.');
     return NextResponse.json(

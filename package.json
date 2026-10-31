@@ -1,8 +1,12 @@
 {
   "name": "kzr-video-generator",
   "version": "1.0.0",
-  "description": "Debate video generator",
+  "private": true,
+  "description": "Local-first AI video studio for narrated explainers, debates, and social clips",
   "main": "main.ts",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "next:dev": "next dev",
     "next:build": "next build",
@@ -17,10 +21,13 @@
     "transition-audio": "tsx src/features/rendering/addTransitionAudio.ts",
     "extract-reel-scripts": "tsx src/features/reels/extractReelScripts.ts",
     "reels": "tsx src/features/reels/makeReels.ts --style=style3",
-    "test:domain": "tsx --test src/domain/projects/*.test.ts",
-    "test:openai": "tsx --test src/services/openai/*.test.ts",
-    "test:pipeline": "tsx --test src/domain/pipeline/*.test.ts",
-    "test:unit": "tsx --test src/domain/projects/*.test.ts src/domain/pipeline/*.test.ts src/services/openai/*.test.ts"
+    "test:domain": "node --import tsx --test src/domain/projects/*.test.ts",
+    "test:openai": "node --import tsx --test src/services/openai/*.test.ts",
+    "test:pipeline": "node --import tsx --test src/domain/pipeline/*.test.ts",
+    "test": "node --import tsx --test src/domain/projects/*.test.ts src/domain/pipeline/*.test.ts src/services/openai/*.test.ts",
+    "test:unit": "npm test",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && npm run next:build"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

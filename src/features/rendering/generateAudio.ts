@@ -9,6 +9,7 @@ import { buildRenderCaptions } from '@/src/domain/projects/captions';
 import { audioManifestPath } from './videoFiles';
 import { speechCostUsd } from '@/src/services/openai/pricing';
 import { recordSpeechUsage } from '@/src/services/openai/usageLedger';
+import { readProjectDocument } from '@/src/infrastructure/storage/localProjectStore';
 
 let client: OpenAI | null = null;
 
@@ -54,11 +55,6 @@ async function generateTts(text: string, mp3File: string, voice: string, attempt
       speed: config.ttsSpeed,
     });
     const buffer = Buffer.from(await response.arrayBuffer());
-    recordSpeechUsage({
-      operation: 'subtitle audio',
-      model: config.ttsModel,
-      characters: text.length,
-    });
     fs.writeFileSync(mp3File, buffer);
   } catch (err: any) {
     // Retry transient failures (rate limits, 5xx, network) — OpenAI TTS occasionally 500s.
@@ -76,6 +72,10 @@ async function generateTts(text: string, mp3File: string, voice: string, attempt
 
 export async function run(debateName: string): Promise<{ characters: number; audioCost: number }> {
   const outputDir = `output/audios/${debateName}`;
+  const projectTitle = (() => {
+    try { return readProjectDocument(debateName).title; }
+    catch { return debateName; }
+  })();
 
   ensureDir('output');
   ensureDir('output/audios');
@@ -97,6 +97,13 @@ export async function run(debateName: string): Promise<{ characters: number; aud
   }
 
   console.log('All audio generated successfully.');
+  recordSpeechUsage({
+    projectId: debateName,
+    projectTitle,
+    operation: 'narration audio',
+    model: config.ttsModel,
+    characters: totalChars,
+  });
   fs.writeFileSync(audioManifestPath(debateName), JSON.stringify({
     signature: audioSignature(debateName),
     segments: lines.length,
